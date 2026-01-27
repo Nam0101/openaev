@@ -68,8 +68,6 @@ const Articles: FunctionComponent<Props> = ({ articles }) => {
 
   // Creation
   const [openCreate, setOpenCreate] = useState(false);
-  const handleOpenCreate = () => setOpenCreate(true);
-  const handleCloseCreate = () => setOpenCreate(false);
 
   // Filter and sort hook
   const [channels, setChannels] = useState<ChannelOption[]>([]);
@@ -100,8 +98,9 @@ const Articles: FunctionComponent<Props> = ({ articles }) => {
       {permissions.canManage && (
         <CreateArticle
           openCreate={openCreate}
-          handleOpenCreate={handleOpenCreate}
-          handleCloseCreate={handleCloseCreate}
+          isOpen={setOpenCreate}
+          // handleOpenCreate={handleOpenCreate}
+          // handleCloseCreate={handleCloseCreate}
         />
       )}
       {fullArticles.length > 0 && (
@@ -125,7 +124,7 @@ const Articles: FunctionComponent<Props> = ({ articles }) => {
                   variant="outlined"
                   color="primary"
                   size="small"
-                  onClick={handleOpenCreate}
+                  onClick={() => setOpenCreate(true)}
                 >
                   {t('Create an article')}
                 </Button>
@@ -202,7 +201,7 @@ const Articles: FunctionComponent<Props> = ({ articles }) => {
                       >
                         <VisibilityOutlined />
                       </IconButton>
-                      <ArticlePopover article={article} onRemoveArticle={undefined} />
+                      {/*<ArticlePopover article={article} onRemoveArticle={undefined} />*/}
                     </Fragment>
                   )}
                 />
