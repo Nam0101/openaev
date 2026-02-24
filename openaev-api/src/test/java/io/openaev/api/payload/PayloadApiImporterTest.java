@@ -6,6 +6,7 @@ import static java.util.Collections.emptyList;
 import static java.util.Collections.emptyMap;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -62,7 +63,7 @@ class PayloadApiImporterTest extends IntegrationTest {
     // -- EXECUTE --
     String response =
         mockMvc
-            .perform(multipart(PAYLOAD_URI + "/import").file(zipFile))
+            .perform(multipart(PAYLOAD_URI + "/import").file(zipFile).with(csrf()))
             .andExpect(status().is2xxSuccessful())
             .andReturn()
             .getResponse()
