@@ -300,7 +300,8 @@ class InjectApiTest extends IntegrationTest {
                 put(INJECT_URI + "/" + EXERCISE.getId() + "/" + injectToUpdate.getId())
                     .content(asJsonString(input))
                     .contentType(MediaType.APPLICATION_JSON)
-                    .accept(MediaType.APPLICATION_JSON))
+                    .accept(MediaType.APPLICATION_JSON)
+                    .with(csrf()))
             .andExpect(status().is2xxSuccessful())
             .andReturn()
             .getResponse()
@@ -351,7 +352,8 @@ class InjectApiTest extends IntegrationTest {
         mvc.perform(
                 multipart(EXERCISE_URI + "/" + EXERCISE.getId() + "/inject")
                     .file(inputJson)
-                    .file(fileJson))
+                    .file(fileJson)
+                    .with(csrf()))
             .andExpect(status().is2xxSuccessful())
             .andReturn()
             .getResponse()
@@ -395,7 +397,10 @@ class InjectApiTest extends IntegrationTest {
 
     // -- EXECUTE --
     String response =
-        mvc.perform(multipart(EXERCISE_URI + "/" + EXERCISE.getId() + "/inject").file(inputJson))
+        mvc.perform(
+                multipart(EXERCISE_URI + "/" + EXERCISE.getId() + "/inject")
+                    .file(inputJson)
+                    .with(csrf()))
             .andExpect(status().is2xxSuccessful())
             .andReturn()
             .getResponse()
@@ -428,7 +433,10 @@ class InjectApiTest extends IntegrationTest {
 
     // -- EXECUTION --
     String response =
-        mvc.perform(multipart(EXERCISE_URI + "/" + EXERCISE.getId() + "/inject").file(inputJson))
+        mvc.perform(
+                multipart(EXERCISE_URI + "/" + EXERCISE.getId() + "/inject")
+                    .file(inputJson)
+                    .with(csrf()))
             .andExpect(status().is2xxSuccessful())
             .andReturn()
             .getResponse()
@@ -523,7 +531,10 @@ class InjectApiTest extends IntegrationTest {
 
     // -- EXECUTE --
     mvc.perform(
-            delete(INJECT_URI).content(asJsonString(input)).contentType(MediaType.APPLICATION_JSON))
+            delete(INJECT_URI)
+                .content(asJsonString(input))
+                .contentType(MediaType.APPLICATION_JSON)
+                .with(csrf()))
         .andExpect(status().is2xxSuccessful());
 
     // -- ASSERT --
@@ -598,7 +609,8 @@ class InjectApiTest extends IntegrationTest {
       String response =
           mvc.perform(
                   get(INJECT_URI + "/" + injectSaved.getId() + "/fakeId/executable-payload")
-                      .accept(MediaType.APPLICATION_JSON))
+                      .accept(MediaType.APPLICATION_JSON)
+                      .with(csrf()))
               .andExpect(status().is2xxSuccessful())
               .andReturn()
               .getResponse()
@@ -699,7 +711,8 @@ class InjectApiTest extends IntegrationTest {
       String response =
           mvc.perform(
                   get(INJECT_URI + "/" + injectSaved.getId() + "/fakeId/executable-payload")
-                      .accept(MediaType.APPLICATION_JSON))
+                      .accept(MediaType.APPLICATION_JSON)
+                      .with(csrf()))
               .andExpect(status().is2xxSuccessful())
               .andReturn()
               .getResponse()
@@ -760,7 +773,8 @@ class InjectApiTest extends IntegrationTest {
                       + "/"
                       + agentWrapper.get().getId()
                       + "/executable-payload")
-                  .accept(MediaType.APPLICATION_JSON))
+                  .accept(MediaType.APPLICATION_JSON)
+                  .with(csrf()))
           .andExpect(status().is2xxSuccessful());
 
       entityManager.flush();
@@ -816,7 +830,8 @@ class InjectApiTest extends IntegrationTest {
       String response =
           mvc.perform(
                   get(INJECT_URI + "/" + injectSaved.getId() + "/fakeagentID/executable-payload")
-                      .accept(MediaType.APPLICATION_JSON))
+                      .accept(MediaType.APPLICATION_JSON)
+                      .with(csrf()))
               .andExpect(status().is2xxSuccessful())
               .andReturn()
               .getResponse()
@@ -868,7 +883,8 @@ class InjectApiTest extends IntegrationTest {
       String response =
           mvc.perform(
                   get(INJECT_URI + "/" + injectSaved.getId() + "/fakeagentID/executable-payload")
-                      .accept(MediaType.APPLICATION_JSON))
+                      .accept(MediaType.APPLICATION_JSON)
+                      .with(csrf()))
               .andExpect(status().is2xxSuccessful())
               .andReturn()
               .getResponse()
@@ -922,7 +938,8 @@ class InjectApiTest extends IntegrationTest {
           () -> {
             mvc.perform(
                 get(INJECT_URI + "/" + injectSaved.getId() + "/fakeagentID/executable-payload")
-                    .accept(MediaType.APPLICATION_JSON));
+                    .accept(MediaType.APPLICATION_JSON)
+                    .with(csrf()));
           });
     }
   }
@@ -949,7 +966,8 @@ class InjectApiTest extends IntegrationTest {
               post(INJECT_URI + "/execution/callback/" + injectId)
                   .content(asJsonString(input))
                   .contentType(MediaType.APPLICATION_JSON)
-                  .accept(MediaType.APPLICATION_JSON))
+                  .accept(MediaType.APPLICATION_JSON)
+                  .with(csrf()))
           .andExpect(status().is2xxSuccessful())
           .andReturn()
           .getResponse()
@@ -962,7 +980,8 @@ class InjectApiTest extends IntegrationTest {
               post(INJECT_URI + "/execution/" + agentId + "/callback/" + injectId)
                   .content(asJsonString(input))
                   .contentType(MediaType.APPLICATION_JSON)
-                  .accept(MediaType.APPLICATION_JSON))
+                  .accept(MediaType.APPLICATION_JSON)
+                  .with(csrf()))
           .andExpect(status().is2xxSuccessful())
           .andReturn()
           .getResponse()
@@ -2635,7 +2654,7 @@ class InjectApiTest extends IntegrationTest {
     private String performGetRequest(
         String baseUri, String injectId, String targetId, TargetType targetType) throws Exception {
       MockHttpServletRequestBuilder requestBuilder =
-          get(baseUri).accept(MediaType.APPLICATION_JSON).param("injectId", injectId);
+          get(baseUri).accept(MediaType.APPLICATION_JSON).param("injectId", injectId).with(csrf());
 
       if (targetId != null) {
         requestBuilder.param("targetId", targetId);
@@ -2829,7 +2848,8 @@ class InjectApiTest extends IntegrationTest {
               .accept(MediaType.APPLICATION_JSON)
               .param("injectId", "someInjectId")
               .param("targetId", "someTargetId")
-              .param("targetType", TargetType.ASSETS_GROUPS.name());
+              .param("targetType", TargetType.ASSETS_GROUPS.name())
+              .with(csrf());
 
       mvc.perform(requestBuilder)
           .andExpect(status().isBadRequest())
@@ -2900,7 +2920,8 @@ class InjectApiTest extends IntegrationTest {
       // EXECUTE
       MockHttpServletRequestBuilder requestBuilder =
           get(INJECT_URI + "/" + inject.getId() + "/payload/" + payload.getId() + "/documents")
-              .accept(MediaType.APPLICATION_JSON);
+              .accept(MediaType.APPLICATION_JSON)
+              .with(csrf());
 
       // ASSERT
       String response =
@@ -2923,7 +2944,8 @@ class InjectApiTest extends IntegrationTest {
       // EXECUTE
       MockHttpServletRequestBuilder requestBuilder =
           get(INJECT_URI + "/" + inject.getId() + "/payload/" + payload.getId() + "/documents")
-              .accept(MediaType.APPLICATION_JSON);
+              .accept(MediaType.APPLICATION_JSON)
+              .with(csrf());
 
       // ASSERT
       String response =
@@ -2940,7 +2962,9 @@ class InjectApiTest extends IntegrationTest {
     void shouldReturnElementNotFoundExceptionForUnknownInject() throws Exception {
       // EXECUTE
       MockHttpServletRequestBuilder requestBuilder =
-          get(INJECT_URI + "/TEST/payload/TEST/documents").accept(MediaType.APPLICATION_JSON);
+          get(INJECT_URI + "/TEST/payload/TEST/documents")
+              .accept(MediaType.APPLICATION_JSON)
+              .with(csrf());
 
       // ASSERT
       String response =
@@ -2963,7 +2987,8 @@ class InjectApiTest extends IntegrationTest {
       // EXECUTE
       MockHttpServletRequestBuilder requestBuilder =
           get(INJECT_URI + "/" + inject.getId() + "/payload/TEST/documents")
-              .accept(MediaType.APPLICATION_JSON);
+              .accept(MediaType.APPLICATION_JSON)
+              .with(csrf());
 
       // ASSERT
       String response =
@@ -2986,7 +3011,8 @@ class InjectApiTest extends IntegrationTest {
       // EXECUTE
       MockHttpServletRequestBuilder requestBuilder =
           get(INJECT_URI + "/" + inject.getId() + "/payload/TEST/documents")
-              .accept(MediaType.APPLICATION_JSON);
+              .accept(MediaType.APPLICATION_JSON)
+              .with(csrf());
 
       // ASSERT
       mvc.perform(requestBuilder).andExpect(status().isBadRequest());
@@ -3029,7 +3055,8 @@ class InjectApiTest extends IntegrationTest {
       // EXECUTE
       MockHttpServletRequestBuilder requestBuilder =
           get(ATOMIC_TESTING_URI + "/" + inject.getId() + "/collectors")
-              .accept(MediaType.APPLICATION_JSON);
+              .accept(MediaType.APPLICATION_JSON)
+              .with(csrf());
 
       // ASSERT
       String result =
