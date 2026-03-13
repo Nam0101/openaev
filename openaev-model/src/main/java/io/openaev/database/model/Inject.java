@@ -507,7 +507,7 @@ public class Inject implements GrantableBase, Injection, TenantBase {
   @Queryable(filterable = true, path = "injectorContract.labels", clazz = Map.class)
   public String getType() {
     return getInjectorContract()
-        .map(InjectorContract::getInjector)
+        .map(InjectorContract::getFirstInjector)
         .map(Injector::getType)
         .orElse(null);
   }
