@@ -266,7 +266,8 @@ public class InjectorContractService {
         input.getVulnerabilityExternalIds(), input.getVulnerabilityIds(), injectorContract);
 
     Injector injector =
-        updateRelation(input.getInjectorId(), injectorContract.getInjector(), injectorRepository);
+        updateRelation(
+            input.getInjectorId(), injectorContract.getFirstInjector(), injectorRepository);
     // Set inverse side so getInjector() works (safe for transient contracts)
     injectorContract.addInjector(injector);
     injectorContract.setDomains(
@@ -320,7 +321,8 @@ public class InjectorContractService {
       List<AttackPattern> attackPatterns =
           fromIterable(
               attackPatternRepository.findAllByExternalIdInIgnoreCaseAndTenantId(
-                  source.getAttackPatternsExternalIds(), target.getInjector().getTenant().getId()));
+                  source.getAttackPatternsExternalIds(),
+                  target.getFirstInjector().getTenant().getId()));
       target.setAttackPatterns(attackPatterns);
     } else {
       target.setAttackPatterns(new ArrayList<>());

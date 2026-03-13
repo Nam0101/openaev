@@ -153,7 +153,7 @@ public class InjectExecutionStepTest {
                         """
             .formatted(
                 injectorContractSaved.getId(),
-                injectorContractSaved.getInjector().getId(),
+                injectorContractSaved.getFirstInjector().getId(),
                 asset.getId());
   }
 
