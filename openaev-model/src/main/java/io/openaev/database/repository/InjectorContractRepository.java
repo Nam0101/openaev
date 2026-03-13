@@ -90,11 +90,15 @@ public interface InjectorContractRepository
   Optional<InjectorContract> findByIdOrExternalId(String id, String externalId);
 
   @NotNull
-  List<InjectorContract> findInjectorContractsByInjector(@NotNull Injector injector);
+  @Query("SELECT ic FROM InjectorContract ic JOIN ic.injectors i WHERE i = :injector")
+  List<InjectorContract> findInjectorContractsByInjector(
+      @NotNull @Param("injector") Injector injector);
 
   @NotNull
+  @Query(
+      "SELECT ic FROM InjectorContract ic JOIN ic.injectors i WHERE i = :injector AND ic.payload = :payload")
   Optional<InjectorContract> findInjectorContractByInjectorAndPayload(
-      @NotNull Injector injector, @NotNull Payload payload);
+      @NotNull @Param("injector") Injector injector, @NotNull @Param("payload") Payload payload);
 
   @NotNull
   List<InjectorContract> findInjectorContractsByPayload(@NotNull Payload payload);

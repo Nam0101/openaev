@@ -260,6 +260,10 @@ public class InjectorService extends AbstractConnectorService<Injector, Injector
                 .map(in -> injectorContractService.convertInjectorFromInput(in, savedInjector))
                 .toList();
         injectorContractRepository.saveAll(injectorContracts);
+        // Link contracts on the owning side now that they are persisted
+        savedInjector.getContracts().addAll(injectorContracts);
+        // Persist the owning side to save join table entries
+        injectorRepository.save(savedInjector);
 
         // delete the dummy injector if it was created when importing the starter pack
         deleteDummyInjectorIfItExists(input.getType(), savedInjector);
@@ -355,6 +359,8 @@ public class InjectorService extends AbstractConnectorService<Injector, Injector
             .toList();
     injectorContractRepository.deleteAllById(toDeletes);
     injectorContractRepository.saveAll(toCreates);
+    // Link new contracts on the owning side now that they are persisted
+    injector.getContracts().addAll(toCreates);
     return injectorRepository.save(injector);
   }
 
@@ -563,6 +569,8 @@ public class InjectorService extends AbstractConnectorService<Injector, Injector
     injectorContractRepository.deleteAllById(toDelete);
     injectorContractRepository.saveAll(toCreate);
     injectorContractRepository.saveAll(toUpdate);
+    // Link new contracts on the owning side now that they are persisted
+    injector.getContracts().addAll(toCreate);
     injectorRepository.save(injector);
   }
 
@@ -605,7 +613,10 @@ public class InjectorService extends AbstractConnectorService<Injector, Injector
                         contract, savedInjector, isPayloads))
             .toList();
     injectorContractRepository.saveAll(injectorContracts);
-    return savedInjector;
+    // Now that contracts are persisted, link them on the owning side (Injector.contracts)
+    savedInjector.getContracts().addAll(injectorContracts);
+    // Persist the owning side to save join table entries
+    injectorRepository.save(savedInjector);
   }
 
   private void applyBuiltinInjectorProperties(
