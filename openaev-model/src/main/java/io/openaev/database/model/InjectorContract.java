@@ -15,7 +15,6 @@ import io.openaev.annotation.Queryable;
 import io.openaev.database.audit.ModelBaseListener;
 import io.openaev.database.converter.ContentConverter;
 import io.openaev.helper.MonoIdDeserializerHelper;
-import io.openaev.helper.MonoIdSerializer;
 import io.openaev.helper.MultiIdListSerializer;
 import io.openaev.helper.MultiIdSetSerializer;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -129,15 +128,32 @@ public class InjectorContract implements Base {
   @UpdateTimestamp
   private Instant updatedAt = now();
 
-  @ManyToOne(fetch = FetchType.EAGER)
-  @JoinColumn(name = "injector_id")
-  @JsonSerialize(using = MonoIdSerializer.class)
-  @JsonDeserialize(using = MonoIdDeserializerHelper.class)
-  @JsonProperty("injector_contract_injector")
-  @Queryable(filterable = true, dynamicValues = true)
-  @NotNull
-  @Schema(implementation = String.class)
-  private Injector injector;
+  @ManyToMany(mappedBy = "contracts", fetch = FetchType.EAGER)
+  @JsonIgnore
+  private List<Injector> injectors = new ArrayList<>();
+
+  /**
+   * Convenience method: returns the first linked injector, or null. All injectors sharing a
+   * contract have the same type, so this is safe for type/name lookups.
+   */
+  @JsonIgnore
+  public Injector getInjector() {
+    return (injectors != null && !injectors.isEmpty()) ? injectors.getFirst() : null;
+  }
+
+  /**
+   * Sets the injector reference on this contract (inverse side only). Safe to call on transient
+   * contracts — does NOT modify the owning side ({@code Injector.contracts}), so it will not cause
+   * Hibernate auto-flush issues.
+   *
+   * <p>After the contract is persisted, update the owning side directly via {@code
+   * injector.getContracts().add(contract)} for join-table persistence.
+   */
+  public void addInjector(Injector injector) {
+    if (injector != null && !this.injectors.contains(injector)) {
+      this.injectors.add(injector);
+    }
+  }
 
   @Schema(implementation = String[].class)
   @ManyToMany(fetch = FetchType.EAGER)
@@ -223,14 +239,26 @@ public class InjectorContract implements Base {
   @Transient
   private final ResourceType resourceType = ResourceType.INJECTOR_CONTRACT;
 
+  /** Returns all linked injector IDs. */
+  @JsonProperty("injector_contract_injectors")
+  @Schema(implementation = String[].class)
+  @Queryable(filterable = true, path = "injectors.id")
+  private List<String> getInjectorIds() {
+    return injectors != null
+        ? new ArrayList<>(injectors.stream().map(Injector::getId).toList())
+        : Collections.emptyList();
+  }
+
   @JsonProperty("injector_contract_injector_type")
   private String getInjectorType() {
-    return this.getInjector() != null ? this.getInjector().getType() : null;
+    Injector first = getInjector();
+    return first != null ? first.getType() : null;
   }
 
   @JsonProperty("injector_contract_injector_type_name")
   private String getInjectorName() {
-    return this.getInjector() != null ? this.getInjector().getName() : null;
+    Injector first = getInjector();
+    return first != null ? first.getName() : null;
   }
 
   @JsonIgnore

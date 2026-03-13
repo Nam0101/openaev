@@ -65,8 +65,11 @@ class StepServiceIntegrationTest {
     Injector injectorSaved = injectorRepository.save(injector);
 
     InjectorContract injectorContract = getInjectorContract();
-    injectorContract.setInjector(injectorSaved);
+    injectorContract.addInjector(injectorSaved);
     InjectorContract injectorContractSaved = injectorContractRepository.save(injectorContract);
+    // Link on the owning side and save to persist the join table
+    injectorSaved.getContracts().add(injectorContractSaved);
+    injectorRepository.save(injectorSaved);
 
     doReturn(injectorContractSaved).when(injectorContractService).injectorContract(any());
     doReturn(new User()).when(userService).currentUser();
@@ -306,9 +309,6 @@ class StepServiceIntegrationTest {
     labels.put("fr", "WHOAMI");
     injectorContract.setLabels(labels);
     injectorContract.setManual(false);
-    Injector injector = new Injector();
-    injector.setId("injectorId");
-    injectorContract.setInjector(injector);
     injectorContract.setAtomicTesting(false);
     injectorContract.setCustom(false);
     injectorContract.setPlatforms(new Endpoint.PLATFORM_TYPE[] {Endpoint.PLATFORM_TYPE.MacOS});

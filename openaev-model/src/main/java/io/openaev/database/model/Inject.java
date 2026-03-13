@@ -171,7 +171,7 @@ public class Inject implements GrantableBase, Injection, TenantBase {
   @ManyToOne(fetch = FetchType.EAGER)
   @JoinColumn(name = "inject_injector_contract")
   @JsonProperty("inject_injector_contract")
-  @Queryable(filterable = true, dynamicValues = true, path = "injectorContract.injector.id")
+  @Queryable(filterable = true, dynamicValues = true, path = "injector.id")
   private InjectorContract injectorContract;
 
   @Getter
