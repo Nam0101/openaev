@@ -354,6 +354,8 @@ public class InjectorService extends AbstractConnectorService<Injector, Injector
             .map(in -> injectorContractService.convertInjectorFromInput(in, injector))
             .toList();
     injectorContractRepository.deleteAllById(toDeletes);
+    // Remove deleted contracts from the owning-side collection to keep it in sync
+    injector.getContracts().removeIf(c -> toDeletes.contains(c.getId()));
     injectorContractRepository.saveAll(toCreates);
     // Link new contracts on the owning side now that they are persisted
     injector.getContracts().addAll(toCreates);
@@ -566,6 +568,8 @@ public class InjectorService extends AbstractConnectorService<Injector, Injector
 
     // Persist changes
     injectorContractRepository.deleteAllById(toDelete);
+    // Remove deleted contracts from the owning-side collection to keep it in sync
+    injector.getContracts().removeIf(c -> toDelete.contains(c.getId()));
     injectorContractRepository.saveAll(toCreate);
     injectorContractRepository.saveAll(toUpdate);
     // Link new contracts on the owning side now that they are persisted
