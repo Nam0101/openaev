@@ -7,8 +7,7 @@ description: "Backend Java/Spring conventions: entities, services, controllers, 
 
 ## ⚠️ Module Rule
 
-**`openaev-framework` is deprecated** — never add new code there. It will be removed.
-Place new utilities, services, and classes in `openaev-api` or `openaev-model` instead.
+> `openaev-framework` is deprecated — see [copilot-instructions.md](../copilot-instructions.md) for details. Never add new code there.
 
 ## Layering
 
@@ -20,7 +19,7 @@ Place new utilities, services, and classes in `openaev-api` or `openaev-model` i
 ## New Controllers (package `io.openaev.api.*`)
 
 - `@RestController @RequestMapping("/api/{entities}") @RequiredArgsConstructor`
-- Every endpoint: `@AccessControl`
+- Every endpoint: `@AccessControl` + `@LogExecutionTime` + `@Operation`
 - URI: lowercase, hyphens, nouns — HTTP method defines the action
 - Search: `@PostMapping("/search")`, Create: `201`, Delete: `204`
 - Organize endpoints with section comments: `// -- CREATE --`, `// -- READ --`, `// -- UPDATE --`, `// -- DELETE --`
@@ -66,15 +65,13 @@ public Page<PlatformRoleOutput> search(...) { return service.search(input).map(M
 
 - Collections must be mutable — never `List.of()` directly on entity fields
 - Prefer unidirectional relationships
+- `@Transactional` does NOT work on self-calls (Spring proxy bypass)
+- Background tasks: explicit `@Transactional` (no OSIV outside controllers)
 - `deleteById()` does a SELECT first — use native `@Query @Modifying` for perf-critical deletes
 
 ## Services
 
-- Every new service class should have these annotations:
-@Service — marks the class as a Spring-managed service bean
-@RequiredArgsConstructor — Lombok generates a constructor for all private final fields (replacing @Autowired)
-- Methods on Service class should uses
-@Transactional(rollbackFor = Exception.class) — wraps every public method in a transaction that rolls back on any exception (not just unchecked ones, which is the Spring default)
+- `@Service @RequiredArgsConstructor @Transactional(rollbackFor = Exception.class)`
 - Read methods: `@Transactional(readOnly = true)`
 - Always use `org.springframework.transaction.annotation.Transactional` — **never** `jakarta.transaction.Transactional` (which lacks `rollbackFor`, `readOnly`, etc.)
 - Organize methods with section comments in this order: `// -- CREATE --`, `// -- READ --`, `// -- UPDATE --`, `// -- DELETE --`
@@ -84,7 +81,8 @@ public Page<PlatformRoleOutput> search(...) { return service.search(input).map(M
 
 ## Repositories
 
-- Use JpaRepository instead of CrudRepository
+- Use `JpaRepository` instead of `CrudRepository`
+- Extend `JpaSpecificationExecutor` for entities that need search/filtering
 
 ## Lombok
 
@@ -92,5 +90,3 @@ public Page<PlatformRoleOutput> search(...) { return service.search(input).map(M
 - Entities: `@Getter @Setter` (not `@Data`)
 - DTOs: `@Builder` OK, prefer records for new code
 - Never `@Autowired` on fields in new code
-
-

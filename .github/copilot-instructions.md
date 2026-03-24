@@ -84,7 +84,7 @@ Primary CI runs on every push:
 
 ```
 openaev-model/       # Domain models, entities, DTOs
-openaev-framework/   # ⚠️ DEPRECATED — do not add new code here. Will be removed.
+openaev-framework/   # ⚠️ DEPRECATED — will be removed (see Architecture section above)
 openaev-api/         # REST API, main application
   src/main/java/io/openaev/
     api/             # REST controllers
