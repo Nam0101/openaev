@@ -119,7 +119,7 @@ class PayloadApiImporterTest extends IntegrationTest {
     // -- EXECUTE --
     String response =
         mockMvc
-            .perform(multipart(PAYLOAD_URI + "/import").file(zipFile))
+            .perform(multipart(PAYLOAD_URI + "/import").file(zipFile).with(csrf()))
             .andExpect(status().is2xxSuccessful())
             .andReturn()
             .getResponse()
@@ -179,7 +179,7 @@ class PayloadApiImporterTest extends IntegrationTest {
 
     String response =
         mockMvc
-            .perform(multipart(PAYLOAD_URI + "/import").file(zipFile))
+            .perform(multipart(PAYLOAD_URI + "/import").file(zipFile).with(csrf()))
             .andExpect(status().is2xxSuccessful())
             .andReturn()
             .getResponse()
@@ -217,7 +217,7 @@ class PayloadApiImporterTest extends IntegrationTest {
 
     String response =
         mockMvc
-            .perform(multipart(PAYLOAD_URI + "/import").file(zipFile))
+            .perform(multipart(PAYLOAD_URI + "/import").file(zipFile).with(csrf()))
             .andExpect(status().is2xxSuccessful())
             .andReturn()
             .getResponse()
