@@ -266,7 +266,7 @@ public class InjectorContract implements Base {
   /** Returns all linked injector IDs. */
   @JsonProperty("injector_contract_injectors")
   @Schema(implementation = String[].class)
-  @Queryable(filterable = true, path = "injectors.id")
+  @Queryable(filterable = true, dynamicValues = true, path = "injectors.id")
   private List<String> getInjectorIds() {
     return injectors != null
         ? new ArrayList<>(injectors.stream().map(Injector::getId).toList())
