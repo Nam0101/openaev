@@ -4,7 +4,6 @@ import static io.openaev.database.model.ExecutionStatus.EXECUTING;
 import static io.openaev.utils.InjectionUtils.isInInjectableRange;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.openaev.asset.QueueService;
 import io.openaev.database.model.*;
 import io.openaev.database.model.Injector;
 import io.openaev.database.repository.InjectStatusRepository;
@@ -15,6 +14,7 @@ import io.openaev.execution.ExecutionExecutorService;
 import io.openaev.integration.ManagerFactory;
 import io.openaev.rest.inject.service.InjectStatusService;
 import io.openaev.service.InjectorService;
+import io.openaev.service.RabbitmqService;
 import io.openaev.service.connector_instances.ConnectorInstanceService;
 import io.openaev.telemetry.metric_collectors.ActionMetricCollector;
 import jakarta.annotation.Resource;
@@ -39,7 +39,7 @@ public class Executor {
   private final InjectStatusRepository injectStatusRepository;
   private final InjectorRepository injectorRepository;
 
-  private final QueueService queueService;
+  private final RabbitmqService rabbitmqService;
   private final ActionMetricCollector actionMetricCollector;
   private final ManagerFactory managerFactory;
 
@@ -63,7 +63,7 @@ public class Executor {
     InjectStatus injectStatus =
         this.injectStatusRepository.findByInjectId(inject.getId()).orElseThrow();
 
-    queueService.publish(injectorService.getOriginInjectorType(injector.getType()), jsonInject);
+    rabbitmqService.publish(injectorService.getOriginInjectorType(injector.getType()), jsonInject);
     injectStatus.addInfoTrace(
         "The inject has been published and is now waiting to be consumed.",
         ExecutionTraceAction.EXECUTION);
