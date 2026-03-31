@@ -1,0 +1,43 @@
+name: Frontend Quality & Unit Tests
+description: >
+  Run TypeScript checks, ESLint, i18n validation, and Vitest unit tests.
+  Uploads coverage report as an artifact.
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js 22.11
+      uses: actions/setup-node@v5
+      with:
+        node-version: "22.11.0"
+        cache: yarn
+        cache-dependency-path: openaev-front/yarn.lock
+    - name: Install dependencies
+      run: yarn install --immutable
+      shell: bash
+      working-directory: openaev-front
+    - name: TypeScript check
+      run: yarn check-ts
+      shell: bash
+      working-directory: openaev-front
+    - name: Run ESLint
+      run: yarn lint
+      shell: bash
+      working-directory: openaev-front
+    - name: Check i18n translations
+      run: yarn i18n-checker
+      shell: bash
+      working-directory: openaev-front
+    - name: Run unit tests
+      run: yarn test -- --coverage
+      shell: bash
+      working-directory: openaev-front
+      env:
+        NODE_OPTIONS: --max_old_space_size=8192
+    - name: Upload frontend coverage report
+      if: ${{ !cancelled() }}
+      uses: actions/upload-artifact@v6
+      with:
+        name: vitest-coverage
+        path: openaev-front/coverage/
+

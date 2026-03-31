@@ -1,0 +1,26 @@
+name: Frontend Build
+description: Install frontend dependencies, build production bundle, and upload artifact
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js 22.11
+      uses: actions/setup-node@v5
+      with:
+        node-version: "22.11.0"
+        cache: yarn
+        cache-dependency-path: openaev-front/yarn.lock
+    - name: Install dependencies
+      run: yarn install --immutable
+      shell: bash
+      working-directory: openaev-front
+    - name: Build frontend
+      run: yarn build
+      shell: bash
+      working-directory: openaev-front
+    - name: Upload frontend build artifact
+      uses: actions/upload-artifact@v6
+      with:
+        name: frontend-build
+        path: openaev-front/builder/prod/build/
+

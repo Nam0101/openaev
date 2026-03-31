@@ -1,0 +1,818 @@
+name: "[Release] Dry Run"
+
+# Manual-only workflow that simulates a full release pipeline without
+# pushing to Docker Hub or JFrog. Artifacts are pushed to GHCR (GitHub
+# Container Registry) so you can inspect them, and every build artifact
+# is validated for size, count, and correctness.
+#
+# This workflow runs the SAME quality gates as core-ci.yml (frontend
+# quality checks, API tests, E2E tests, coverage) so it truly validates
+# that a release would succeed end-to-end.
+#
+# Shared build and test steps live in .github/actions/ and are reused by
+# core-ci.yml, so any change to the build/test pipeline is automatically
+# tested here too.
+
+on:
+  workflow_dispatch:
+    inputs:
+      simulated_version:
+        description: >
+          Semver tag to simulate (e.g. "2.4.0"). Used for Docker tags,
+          catalog patching, and binary downloads.
+        required: true
+        type: string
+        default: "0.0.0-dryrun"
+      skip_binary_download:
+        description: >
+          Skip downloading agent/implant binaries from JFrog
+          (useful when JFrog is unreachable or you only want to test
+          the build + Docker pipeline).
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write          # push to GHCR
+  actions: read            # poll for artifacts in api-tests/e2e-tests
+
+env:
+  SIMULATED_VERSION: ${{ inputs.simulated_version }}
+  GHCR_IMAGE: ghcr.io/${{ github.repository }}/dry-run
+
+jobs:
+
+  # ──────────────────────────────────────────────────────────────────
+  # 1. Quick sanity: spotless + compile + frontend
+  #    All three use the SAME composite actions as core-ci.yml
+  # ──────────────────────────────────────────────────────────────────
+  spotless-check:
+    name: "🔍 Spotless Check"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/spotless-check
+
+  backend-compile:
+    name: "🔨 Backend Compile"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/backend-compile
+
+  frontend-build:
+    name: "🎨 Frontend Build"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/frontend-build
+
+  # ──────────────────────────────────────────────────────────────────
+  # 2. Quality gates (same as core-ci.yml)
+  # ──────────────────────────────────────────────────────────────────
+  frontend-quality:
+    name: "🧪 Frontend Quality & Unit Tests"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/frontend-quality
+
+  api-tests:
+    name: "🧪 API Tests (${{ matrix.shard_name }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: 1
+            shard_name: main
+            includes: |-
+              io/openaev/api/**/*Test.java
+              io/openaev/integration/**/*Test.java
+              io/openaev/injects/**/*Test.java
+              io/openaev/opencti/**/*Test.java
+              io/openaev/service/**/*Test.java
+          - shard: 2
+            shard_name: rest-1
+            includes: |-
+              io/openaev/rest/*Test.java
+              io/openaev/rest/asset_group/**/*Test.java
+              io/openaev/rest/attack_pattern/**/*Test.java
+              io/openaev/rest/custom_dashboard/**/*Test.java
+              io/openaev/rest/dashboard/**/*Test.java
+              io/openaev/rest/exercise/**/*Test.java
+          - shard: 3
+            shard_name: rest-2
+            includes: |-
+              io/openaev/rest/**/*Test.java
+            excludes: |-
+              io/openaev/rest/*Test.java
+              io/openaev/rest/asset_group/**/*Test.java
+              io/openaev/rest/attack_pattern/**/*Test.java
+              io/openaev/rest/custom_dashboard/**/*Test.java
+              io/openaev/rest/dashboard/**/*Test.java
+              io/openaev/rest/exercise/**/*Test.java
+          - shard: 4
+            shard_name: remaining
+            includes: catchall
+    env:
+      EXPLICITLY_SHARDED_TESTS: |-
+        io/openaev/api/**/*Test.java
+        io/openaev/integration/**/*Test.java
+        io/openaev/injects/**/*Test.java
+        io/openaev/opencti/**/*Test.java
+        io/openaev/service/**/*Test.java
+        io/openaev/rest/**/*Test.java
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/openaev
+      SPRING_DATASOURCE_USERNAME: openaev
+      SPRING_DATASOURCE_PASSWORD: openaev
+      MINIO_ENDPOINT: localhost
+      MINIO_PORT: 9000
+      ENGINE_URL: http://localhost:9200
+      OPENBAS_RABBITMQ_HOSTNAME: localhost
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/api-tests
+        with:
+          includes: ${{ matrix.includes }}
+          excludes: ${{ matrix.excludes }}
+          shard: ${{ matrix.shard }}
+          shard-name: ${{ matrix.shard_name }}
+
+  e2e-tests:
+    name: "🧪 E2E & API Types"
+    runs-on: ubuntu-latest
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/openaev
+      SPRING_DATASOURCE_USERNAME: openaev
+      SPRING_DATASOURCE_PASSWORD: openaev
+      MINIO_ENDPOINT: localhost
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_ACCESS_SECRET: minioadmin
+      ENGINE_URL: http://localhost:9200
+      OPENBAS_RABBITMQ_HOSTNAME: localhost
+      OPENAEV_ADMIN_EMAIL: admin@openaev.io
+      OPENAEV_ADMIN_PASSWORD: admin
+      OPENAEV_ADMIN_TOKEN: 0d17ce9a-f3a8-4c6d-9721-c98dc3dc023f
+      OPENAEV_ADMIN_ENCRYPTION_KEY: ThisIsMyUltraSecureEncryptionKey
+      OPENAEV_ADMIN_ENCRYPTION_SALT: ilikesaltyfoodnomnom
+      SPRING_PROFILES_ACTIVE: ci
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/e2e-tests
+
+  codecov:
+    name: "📊 Coverage Merge & Check"
+    needs: [api-tests, frontend-quality, e2e-tests]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: Download compiled Maven artifacts
+        if: needs.api-tests.result == 'success' || needs.api-tests.result == 'failure'
+        uses: actions/download-artifact@v8
+        with:
+          name: backend-compiled
+          path: ~/.m2/repository/io/openaev/
+        continue-on-error: true
+
+      - name: Download API build output
+        if: needs.api-tests.result == 'success' || needs.api-tests.result == 'failure'
+        uses: actions/download-artifact@v8
+        with:
+          name: api-build-output
+          path: openaev-api/target
+        continue-on-error: true
+
+      - name: Download all JaCoCo exec shards
+        if: needs.api-tests.result == 'success' || needs.api-tests.result == 'failure'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: jacoco-exec-shard-*
+          path: jacoco-exec
+        continue-on-error: true
+
+      - name: Merge JaCoCo exec files
+        id: jacoco-merge
+        if: needs.api-tests.result == 'success' || needs.api-tests.result == 'failure'
+        run: |
+          echo "📦 Merging JaCoCo exec files from all shards..."
+          EXEC_FILES=$(find jacoco-exec -name 'jacoco.exec' 2>/dev/null)
+          if [ -z "$EXEC_FILES" ]; then
+            echo "⚠️ No JaCoCo exec files found — all test shards may have failed"
+            echo "  Contents of jacoco-exec/:"
+            ls -laR jacoco-exec/ 2>/dev/null || echo "  directory does not exist"
+            exit 1
+          fi
+          SHARD_COUNT=$(echo "$EXEC_FILES" | wc -l)
+          echo "  Found $SHARD_COUNT shard exec file(s)"
+          cat jacoco-exec/jacoco-exec-shard-*/jacoco.exec > openaev-api/target/jacoco.exec
+          if [ ! -s "openaev-api/target/jacoco.exec" ]; then
+            echo "❌ Merged jacoco.exec is empty"
+            exit 1
+          fi
+          echo "✅ Merged $SHARD_COUNT shard(s) → $(wc -c < openaev-api/target/jacoco.exec) bytes"
+
+      - name: Coverage report & threshold check
+        if: steps.jacoco-merge.outcome == 'success'
+        run: mvn -B -ntp -pl openaev-api jacoco:report jacoco:check || echo "⚠️ Coverage threshold check ⚠️"
+
+  # ──────────────────────────────────────────────────────────────────
+  # 3. Prepare release assets (optional binary download + catalog patch)
+  # ──────────────────────────────────────────────────────────────────
+  prepare-release-assets:
+    name: "📦 Prepare Release Assets"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download agent & implant binaries
+        if: ${{ inputs.skip_binary_download != true }}
+        run: |
+          chmod +x scripts/download-binaries.sh
+          if ! bash scripts/download-binaries.sh "$SIMULATED_VERSION" "$SIMULATED_VERSION"; then
+            echo "⚠️ download-binaries.sh failed — continuing (dry run)"
+          fi
+
+      - name: Create placeholder binaries (when download skipped)
+        if: ${{ inputs.skip_binary_download == true }}
+        run: |
+          echo "ℹ️ Binary download skipped — creating placeholder files"
+          RESOURCES="openaev-api/src/main/resources"
+          mkdir -p "${RESOURCES}/agents/openaev-agent/linux/arm64"
+          mkdir -p "${RESOURCES}/agents/openaev-agent/linux/x86_64"
+          mkdir -p "${RESOURCES}/implants/openaev-implant/linux/arm64"
+          mkdir -p "${RESOURCES}/implants/openaev-implant/linux/x86_64"
+          # Create small placeholder files so downstream validation can count them
+          for dir in \
+            "${RESOURCES}/agents/openaev-agent/linux/arm64" \
+            "${RESOURCES}/agents/openaev-agent/linux/x86_64" \
+            "${RESOURCES}/implants/openaev-implant/linux/arm64" \
+            "${RESOURCES}/implants/openaev-implant/linux/x86_64"; do
+            echo "placeholder-${SIMULATED_VERSION}" > "${dir}/placeholder-${SIMULATED_VERSION}"
+          done
+
+      - name: Patch catalog version
+        run: |
+          CATALOG_FILE=openaev-api/src/main/resources/catalog/catalog-integrators.json
+          if [ ! -f "$CATALOG_FILE" ]; then
+            echo "⚠️ Catalog file not found — skipping patch"
+            exit 0
+          fi
+          jq --arg ver "$SIMULATED_VERSION" \
+            '.contracts[].container_version = $ver | .version = $ver' \
+            "$CATALOG_FILE" > catalog.tmp
+          jq empty catalog.tmp
+          mv catalog.tmp "$CATALOG_FILE"
+          echo "✅ Catalog version patched to '$SIMULATED_VERSION'"
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-assets
+          path: |
+            openaev-api/src/main/resources/agents/
+            openaev-api/src/main/resources/implants/
+            openaev-api/src/main/resources/catalog/
+
+  # ──────────────────────────────────────────────────────────────────
+  # 3. Package backend JAR (glibc)
+  #    Uses the SAME composite action as core-ci.yml, then adds
+  #    extended dry-run validation on top.
+  # ──────────────────────────────────────────────────────────────────
+  backend-package:
+    name: "📦 Backend Package (glibc)"
+    needs: [frontend-build, backend-compile, prepare-release-assets]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/backend-package
+        with:
+          download-release-assets: 'true'
+
+      # ── Extended validation (dry-run only) ──
+      - name: Extended JAR validation (dry run)
+        id: jar-validate
+        run: |
+          JAR="openaev-api/target/openaev-api.jar"
+          JAR_SIZE=$(stat --format=%s "$JAR")
+          JAR_SIZE_MB=$(awk "BEGIN {printf \"%.1f\", $JAR_SIZE / 1048576}")
+          echo "jar_size=$JAR_SIZE"       >> "$GITHUB_OUTPUT"
+          echo "jar_size_mb=$JAR_SIZE_MB" >> "$GITHUB_OUTPUT"
+
+          # Sanity: JAR should be at least 50 MB for a Spring Boot fat JAR
+          if [ "$JAR_SIZE" -lt 52428800 ]; then
+            echo "⚠️ JAR is only ${JAR_SIZE_MB} MB — suspiciously small for a fat JAR"
+            echo "jar_warning=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ JAR size looks healthy: ${JAR_SIZE_MB} MB"
+            echo "jar_warning=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # List what's inside the JAR
+          echo ""
+          echo "── JAR contents summary ──"
+          JAR_ENTRIES=$(unzip -l "$JAR" | tail -1 | awk '{print $2}')
+          echo "  Total entries: $JAR_ENTRIES"
+          echo "jar_entries=$JAR_ENTRIES" >> "$GITHUB_OUTPUT"
+
+          # Check that frontend assets are bundled
+          FRONTEND_FILES=$(unzip -l "$JAR" | grep -c 'BOOT-INF/classes/static/' || true)
+          echo "  Frontend static files: $FRONTEND_FILES"
+          echo "frontend_files=$FRONTEND_FILES" >> "$GITHUB_OUTPUT"
+          if [ "$FRONTEND_FILES" -eq 0 ]; then
+            echo "⚠️ No frontend static files found in JAR!"
+            echo "frontend_warning=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ Frontend assets present"
+            echo "frontend_warning=false" >> "$GITHUB_OUTPUT"
+          fi
+    outputs:
+      jar_size: ${{ steps.jar-validate.outputs.jar_size }}
+      jar_size_mb: ${{ steps.jar-validate.outputs.jar_size_mb }}
+      jar_entries: ${{ steps.jar-validate.outputs.jar_entries }}
+      jar_warning: ${{ steps.jar-validate.outputs.jar_warning }}
+      frontend_files: ${{ steps.jar-validate.outputs.frontend_files }}
+      frontend_warning: ${{ steps.jar-validate.outputs.frontend_warning }}
+
+  # ──────────────────────────────────────────────────────────────────
+  # 4. Package backend JAR (musl/Alpine)
+  #    Uses the SAME composite action as core-ci.yml, then adds
+  #    extended dry-run validation on top.
+  # ──────────────────────────────────────────────────────────────────
+  backend-package-musl:
+    name: "📦 Backend Package (musl)"
+    needs: [frontend-build, backend-compile, prepare-release-assets]
+    runs-on: ubuntu-latest
+    container:
+      image: maven:3.9.14-eclipse-temurin-21-alpine
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/backend-package-musl
+
+      # ── Extended validation (dry-run only) ──
+      - name: Extended JAR validation (dry run)
+        id: jar-validate-musl
+        run: |
+          JAR="openaev-api/target/openaev-api.jar"
+          JAR_SIZE=$(stat -c%s "$JAR" 2>/dev/null || wc -c < "$JAR")
+          JAR_SIZE_MB=$(awk "BEGIN {printf \"%.1f\", $JAR_SIZE / 1048576}")
+          echo "jar_size_musl=$JAR_SIZE"       >> "$GITHUB_OUTPUT"
+          echo "jar_size_musl_mb=$JAR_SIZE_MB" >> "$GITHUB_OUTPUT"
+
+          if [ "$JAR_SIZE" -lt 52428800 ]; then
+            echo "⚠️ musl JAR is only ${JAR_SIZE_MB} MB — suspiciously small"
+            echo "jar_musl_warning=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ musl JAR size looks healthy: ${JAR_SIZE_MB} MB"
+            echo "jar_musl_warning=false" >> "$GITHUB_OUTPUT"
+          fi
+    outputs:
+      jar_size_musl: ${{ steps.jar-validate-musl.outputs.jar_size_musl }}
+      jar_size_musl_mb: ${{ steps.jar-validate-musl.outputs.jar_size_musl_mb }}
+      jar_musl_warning: ${{ steps.jar-validate-musl.outputs.jar_musl_warning }}
+
+  # ──────────────────────────────────────────────────────────────────
+  # 5. Docker build + push to GHCR (NOT Docker Hub)
+  # ──────────────────────────────────────────────────────────────────
+  docker-build-push-ghcr:
+    name: "🐳 Docker Build → GHCR"
+    needs: [spotless-check, api-tests, frontend-quality, e2e-tests, backend-package]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download backend JAR artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: openaev-api-jar
+          path: openaev-build
+
+      - name: Verify backend JAR
+        run: |
+          if [ ! -f "openaev-build/openaev-api.jar" ]; then
+            echo "❌ openaev-api.jar not found"
+            exit 1
+          fi
+          echo "✅ JAR present ($(stat --format=%s openaev-build/openaev-api.jar) bytes)"
+
+      - name: Set up QEMU (multi-arch emulation)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute Docker tags (simulating release)
+        id: tags
+        run: |
+          VERSION="${{ inputs.simulated_version }}"
+          IMAGE="${GHCR_IMAGE}"
+
+          # Always tag with the simulated version
+          TAGS="${IMAGE}:${VERSION}"
+          # Also tag as "dry-run-latest" so it's easy to find
+          TAGS="${TAGS},${IMAGE}:dry-run-latest"
+          # Tag with short SHA for traceability
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          TAGS="${TAGS},${IMAGE}:sha-${SHORT_SHA}"
+
+          echo "tags=${TAGS}"     >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo ""
+          echo "── Tags that WOULD be applied in production ──"
+          echo "  openaev/platform:${VERSION}"
+          echo "  openaev/platform:latest  (if this is the newest semver)"
+          echo ""
+          echo "── Tags applied to GHCR (dry run) ──"
+          echo "$TAGS" | tr ',' '\n' | sed 's/^/  /'
+
+      - name: Build and push to GHCR
+        id: docker-build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile_ga
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+
+      - name: Validate Docker image
+        id: docker-validate
+        run: |
+          IMAGE="${GHCR_IMAGE}:${{ steps.tags.outputs.version }}"
+
+          # Pull the amd64 image for inspection
+          docker pull --platform linux/amd64 "$IMAGE"
+
+          # Check image size
+          IMAGE_SIZE=$(docker image inspect "$IMAGE" --format='{{.Size}}')
+          IMAGE_SIZE_MB=$(awk "BEGIN {printf \"%.1f\", $IMAGE_SIZE / 1048576}")
+          echo "image_size=$IMAGE_SIZE"       >> "$GITHUB_OUTPUT"
+          echo "image_size_mb=$IMAGE_SIZE_MB" >> "$GITHUB_OUTPUT"
+
+          echo "  Image size: ${IMAGE_SIZE_MB} MB"
+
+          # Image should be at least 200 MB (JRE + app)
+          if [ "$IMAGE_SIZE" -lt 209715200 ]; then
+            echo "⚠️ Docker image is only ${IMAGE_SIZE_MB} MB — suspiciously small"
+            echo "image_warning=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ Docker image size looks healthy"
+            echo "image_warning=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Verify JAR is inside the image
+          JAR_IN_IMAGE=$(docker run --rm --entrypoint ls "$IMAGE" -la /opt/openaev-api.jar 2>/dev/null || echo "MISSING")
+          if echo "$JAR_IN_IMAGE" | grep -q "MISSING"; then
+            echo "❌ openaev-api.jar NOT found inside Docker image!"
+            echo "jar_in_image=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ openaev-api.jar found inside Docker image"
+            echo "jar_in_image=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Verify Java is available
+          JAVA_VERSION=$(docker run --rm --entrypoint java "$IMAGE" -version 2>&1 | head -1 || echo "MISSING")
+          echo "  Java: $JAVA_VERSION"
+          echo "java_version=$JAVA_VERSION" >> "$GITHUB_OUTPUT"
+
+          # Check multi-arch manifest
+          echo ""
+          echo "── Multi-arch manifest ──"
+          docker manifest inspect "$IMAGE" 2>/dev/null | jq -r '.manifests[] | "  \(.platform.os)/\(.platform.architecture)"' || echo "  (manifest inspect not available)"
+
+          # Count layers
+          LAYER_COUNT=$(docker image inspect "$IMAGE" --format='{{len .RootFS.Layers}}')
+          echo "  Layers: $LAYER_COUNT"
+          echo "layer_count=$LAYER_COUNT" >> "$GITHUB_OUTPUT"
+
+          echo "digest=${{ steps.docker-build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+    outputs:
+      image_size_mb: ${{ steps.docker-validate.outputs.image_size_mb }}
+      image_warning: ${{ steps.docker-validate.outputs.image_warning }}
+      jar_in_image: ${{ steps.docker-validate.outputs.jar_in_image }}
+      java_version: ${{ steps.docker-validate.outputs.java_version }}
+      layer_count: ${{ steps.docker-validate.outputs.layer_count }}
+      digest: ${{ steps.docker-validate.outputs.digest }}
+
+  # ──────────────────────────────────────────────────────────────────
+  # 6. Simulate JFrog packaging (tar.gz creation + validation, NO upload)
+  # ──────────────────────────────────────────────────────────────────
+  jfrog-dry-run:
+    name: "📤 JFrog Packaging (dry run)"
+    needs: [backend-package, backend-package-musl]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download glibc JAR
+        uses: actions/download-artifact@v8
+        with:
+          name: openaev-api-jar
+          path: glibc-jar
+
+      - name: Download musl JAR
+        uses: actions/download-artifact@v8
+        with:
+          name: openaev-api-jar-musl
+          path: musl-jar
+
+      - name: Download API build output (for application.properties)
+        uses: actions/download-artifact@v8
+        with:
+          name: api-build-output
+          path: build-output
+
+      - name: Package tar.gz archives (same as production)
+        id: package
+        run: |
+          set -euo pipefail
+          DATE_STAMP="$(date '+%Y%m%d')"
+          echo "date_stamp=${DATE_STAMP}" >> "$GITHUB_OUTPUT"
+
+          for f in glibc-jar/openaev-api.jar musl-jar/openaev-api.jar build-output/classes/application.properties; do
+            if [ ! -f "$f" ]; then
+              echo "❌ Required file missing: $f"
+              exit 1
+            fi
+          done
+          echo "✅ All required files present"
+
+          # Package glibc variant
+          mkdir -p release-glibc/openaev
+          cp glibc-jar/openaev-api.jar release-glibc/openaev/
+          cp build-output/classes/application.properties release-glibc/openaev/
+          tar -C release-glibc -zcvf "openaev-${DATE_STAMP}.tar.gz" openaev
+
+          # Package musl variant
+          mkdir -p release-musl/openaev
+          cp musl-jar/openaev-api.jar release-musl/openaev/
+          cp build-output/classes/application.properties release-musl/openaev/
+          tar -C release-musl -zcvf "openaev-${DATE_STAMP}_musl.tar.gz" openaev
+
+          # Validate archives
+          for variant in "" "_musl"; do
+            ARCHIVE="openaev-${DATE_STAMP}${variant}.tar.gz"
+            if [ ! -s "$ARCHIVE" ]; then
+              echo "❌ Archive is empty or missing: $ARCHIVE"
+              exit 1
+            fi
+            ARCHIVE_SIZE=$(stat --format=%s "$ARCHIVE")
+            ARCHIVE_SIZE_MB=$(awk "BEGIN {printf \"%.1f\", $ARCHIVE_SIZE / 1048576}")
+            echo "  ${ARCHIVE}: ${ARCHIVE_SIZE_MB} MB"
+
+            # Verify archive contents
+            echo "  Contents:"
+            tar -tzf "$ARCHIVE" | sed 's/^/    /'
+
+            # Verify expected files inside archive
+            EXPECTED_FILES=("openaev/openaev-api.jar" "openaev/application.properties")
+            for expected in "${EXPECTED_FILES[@]}"; do
+              if ! tar -tzf "$ARCHIVE" | grep -q "$expected"; then
+                echo "  ❌ Missing expected file in archive: $expected"
+                exit 1
+              fi
+            done
+            echo "  ✅ Archive valid"
+          done
+
+          GLIBC_SIZE=$(stat --format=%s "openaev-${DATE_STAMP}.tar.gz")
+          MUSL_SIZE=$(stat --format=%s "openaev-${DATE_STAMP}_musl.tar.gz")
+          GLIBC_SIZE_MB=$(awk "BEGIN {printf \"%.1f\", $GLIBC_SIZE / 1048576}")
+          MUSL_SIZE_MB=$(awk "BEGIN {printf \"%.1f\", $MUSL_SIZE / 1048576}")
+          echo "glibc_archive_size_mb=${GLIBC_SIZE_MB}" >> "$GITHUB_OUTPUT"
+          echo "musl_archive_size_mb=${MUSL_SIZE_MB}"   >> "$GITHUB_OUTPUT"
+
+          echo ""
+          echo "── JFrog upload targets (NOT uploaded in dry run) ──"
+          echo "  https://filigran.jfrog.io/artifactory/openaev/openaev-${DATE_STAMP}.tar.gz (${GLIBC_SIZE_MB} MB)"
+          echo "  https://filigran.jfrog.io/artifactory/openaev/openaev-${DATE_STAMP}_musl.tar.gz (${MUSL_SIZE_MB} MB)"
+
+      - name: Upload dry-run archives as GitHub artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: jfrog-dry-run-archives
+          path: |
+            openaev-*.tar.gz
+    outputs:
+      glibc_archive_size_mb: ${{ steps.package.outputs.glibc_archive_size_mb }}
+      musl_archive_size_mb: ${{ steps.package.outputs.musl_archive_size_mb }}
+      date_stamp: ${{ steps.package.outputs.date_stamp }}
+
+  # ──────────────────────────────────────────────────────────────────
+  # 7. Validation summary
+  # ──────────────────────────────────────────────────────────────────
+  summary:
+    name: "📋 Release Dry Run Summary"
+    needs: [backend-package, backend-package-musl, docker-build-push-ghcr, jfrog-dry-run, frontend-quality, api-tests, e2e-tests, codecov]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate summary report
+        env:
+          # glibc JAR
+          JAR_SIZE_MB: ${{ needs.backend-package.outputs.jar_size_mb }}
+          JAR_ENTRIES: ${{ needs.backend-package.outputs.jar_entries }}
+          JAR_WARNING: ${{ needs.backend-package.outputs.jar_warning }}
+          FRONTEND_FILES: ${{ needs.backend-package.outputs.frontend_files }}
+          FRONTEND_WARNING: ${{ needs.backend-package.outputs.frontend_warning }}
+          # musl JAR
+          JAR_SIZE_MUSL_MB: ${{ needs.backend-package-musl.outputs.jar_size_musl_mb }}
+          JAR_MUSL_WARNING: ${{ needs.backend-package-musl.outputs.jar_musl_warning }}
+          # Docker
+          IMAGE_SIZE_MB: ${{ needs.docker-build-push-ghcr.outputs.image_size_mb }}
+          IMAGE_WARNING: ${{ needs.docker-build-push-ghcr.outputs.image_warning }}
+          JAR_IN_IMAGE: ${{ needs.docker-build-push-ghcr.outputs.jar_in_image }}
+          JAVA_VERSION: ${{ needs.docker-build-push-ghcr.outputs.java_version }}
+          LAYER_COUNT: ${{ needs.docker-build-push-ghcr.outputs.layer_count }}
+          DOCKER_DIGEST: ${{ needs.docker-build-push-ghcr.outputs.digest }}
+          # JFrog
+          GLIBC_ARCHIVE_MB: ${{ needs.jfrog-dry-run.outputs.glibc_archive_size_mb }}
+          MUSL_ARCHIVE_MB: ${{ needs.jfrog-dry-run.outputs.musl_archive_size_mb }}
+          DATE_STAMP: ${{ needs.jfrog-dry-run.outputs.date_stamp }}
+        run: |
+          set -euo pipefail
+          WARNINGS=0
+          ERRORS=0
+
+          status_icon() {
+            if [ "$1" = "true" ]; then
+              WARNINGS=$((WARNINGS + 1))
+              echo "⚠️"
+            else
+              echo "✅"
+            fi
+          }
+
+          # Build summary markdown
+          {
+            echo "# 🚀 Release Dry Run Summary"
+            echo ""
+            echo "**Simulated version:** \`${SIMULATED_VERSION}\`"
+            echo "**Branch:** \`${GITHUB_REF_NAME}\`"
+            echo "**Commit:** \`${GITHUB_SHA:0:7}\`"
+            echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo ""
+
+            echo "## 📦 Backend JAR (glibc)"
+            echo ""
+            echo "| Metric | Value | Status |"
+            echo "|--------|-------|--------|"
+            echo "| JAR size | ${JAR_SIZE_MB:-N/A} MB | $(status_icon "${JAR_WARNING:-true}") |"
+            echo "| JAR entries | ${JAR_ENTRIES:-N/A} | — |"
+            echo "| Frontend files in JAR | ${FRONTEND_FILES:-N/A} | $(status_icon "${FRONTEND_WARNING:-true}") |"
+            echo ""
+
+            echo "## 📦 Backend JAR (musl/Alpine)"
+            echo ""
+            echo "| Metric | Value | Status |"
+            echo "|--------|-------|--------|"
+            echo "| JAR size | ${JAR_SIZE_MUSL_MB:-N/A} MB | $(status_icon "${JAR_MUSL_WARNING:-true}") |"
+            echo ""
+
+            # Compare glibc vs musl JAR sizes (should be roughly equal)
+            if [ -n "$JAR_SIZE_MB" ] && [ -n "$JAR_SIZE_MUSL_MB" ]; then
+              DIFF=$(awk "BEGIN {d = $JAR_SIZE_MB - $JAR_SIZE_MUSL_MB; print (d<0 ? -d : d)}")
+              PCT=$(awk "BEGIN {printf \"%.1f\", ($DIFF / $JAR_SIZE_MB) * 100}")
+              echo "> **JAR size delta (glibc vs musl):** ${DIFF} MB (${PCT}%)"
+              if awk "BEGIN {exit !($DIFF > 10)}" 2>/dev/null; then
+                echo "> ⚠️ Large size difference between glibc and musl JARs!"
+                WARNINGS=$((WARNINGS + 1))
+              else
+                echo "> ✅ Size difference is within acceptable range"
+              fi
+              echo ""
+            fi
+
+            echo "## 🐳 Docker Image (GHCR)"
+            echo ""
+            echo "| Metric | Value | Status |"
+            echo "|--------|-------|--------|"
+            echo "| Image size | ${IMAGE_SIZE_MB:-N/A} MB | $(status_icon "${IMAGE_WARNING:-true}") |"
+            echo "| JAR inside image | ${JAR_IN_IMAGE:-N/A} | $([ "${JAR_IN_IMAGE}" = "true" ] && echo "✅" || echo "❌") |"
+            echo "| Java version | ${JAVA_VERSION:-N/A} | — |"
+            echo "| Layer count | ${LAYER_COUNT:-N/A} | — |"
+            echo "| Digest | \`${DOCKER_DIGEST:-N/A}\` | — |"
+            echo ""
+
+            if [ "${JAR_IN_IMAGE}" != "true" ]; then
+              ERRORS=$((ERRORS + 1))
+            fi
+
+            echo "## 🧪 Quality Gates"
+            echo ""
+            echo "| Gate | Result |"
+            echo "|------|--------|"
+            echo "| Frontend Quality (check-ts, lint, i18n, unit tests) | $([ "${{ needs.frontend-quality.result }}" = "success" ] && echo "✅ Passed" || echo "❌ ${{ needs.frontend-quality.result }}") |"
+            echo "| API Tests (4 shards) | $([ "${{ needs.api-tests.result }}" = "success" ] && echo "✅ Passed" || echo "❌ ${{ needs.api-tests.result }}") |"
+            echo "| E2E Tests & API Types | $([ "${{ needs.e2e-tests.result }}" = "success" ] && echo "✅ Passed" || echo "❌ ${{ needs.e2e-tests.result }}") |"
+            echo "| Coverage Merge & Check | $([ "${{ needs.codecov.result }}" = "success" ] && echo "✅ Passed" || echo "⚠️ ${{ needs.codecov.result }}") |"
+            echo ""
+
+            echo "## 📤 JFrog Archives (NOT uploaded)"
+            echo ""
+            echo "| Archive | Size | Target URL |"
+            echo "|---------|------|------------|"
+            echo "| \`openaev-${DATE_STAMP:-YYYYMMDD}.tar.gz\` | ${GLIBC_ARCHIVE_MB:-N/A} MB | \`filigran.jfrog.io/artifactory/openaev/\` |"
+            echo "| \`openaev-${DATE_STAMP:-YYYYMMDD}_musl.tar.gz\` | ${MUSL_ARCHIVE_MB:-N/A} MB | \`filigran.jfrog.io/artifactory/openaev/\` |"
+            echo ""
+
+            echo "## 🏷️ Docker Tags (simulated)"
+            echo ""
+            echo "These tags **would** be applied in a real release:"
+            echo ""
+            echo "| Tag | Applied |"
+            echo "|-----|---------|"
+            echo "| \`openaev/platform:${SIMULATED_VERSION}\` | ✅ Always (semver tag) |"
+            echo "| \`openaev/platform:latest\` | Depends on whether \`${SIMULATED_VERSION}\` is the newest semver |"
+            echo "| \`openaev/platform:rolling\` | Only on \`master\` push |"
+            echo "| \`openaev/platform:prerelease\` | Only on \`release/current\` push |"
+            echo ""
+            echo "**Actual GHCR tags (dry run):**"
+            echo "- \`${GHCR_IMAGE}:${SIMULATED_VERSION}\`"
+            echo "- \`${GHCR_IMAGE}:dry-run-latest\`"
+            echo "- \`${GHCR_IMAGE}:sha-${GITHUB_SHA:0:7}\`"
+            echo ""
+
+            echo "---"
+            echo ""
+
+            echo "## 🏁 Overall Result"
+            echo ""
+            if [ "$ERRORS" -gt 0 ]; then
+              echo "### ❌ FAILED — $ERRORS error(s), $WARNINGS warning(s)"
+              echo ""
+              echo "This release would likely **fail** in production. Review the errors above."
+            elif [ "$WARNINGS" -gt 0 ]; then
+              echo "### ⚠️ PASSED WITH WARNINGS — $WARNINGS warning(s)"
+              echo ""
+              echo "The release would probably succeed but some artifacts look unusual. Review the warnings above."
+            else
+              echo "### ✅ PASSED — No issues detected"
+              echo ""
+              echo "All artifacts look healthy. The release pipeline should work correctly for version \`${SIMULATED_VERSION}\`."
+            fi
+            echo ""
+            echo "---"
+            echo "*This is a dry run. Nothing was pushed to Docker Hub or JFrog.*"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if critical errors detected
+        env:
+          JAR_IN_IMAGE: ${{ needs.docker-build-push-ghcr.outputs.jar_in_image }}
+        run: |
+          ERRORS=0
+          if [ "${JAR_IN_IMAGE}" != "true" ]; then
+            echo "❌ CRITICAL: JAR not found inside Docker image"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # Check that upstream jobs succeeded
+          for job_result in \
+            "${{ needs.backend-package.result }}" \
+            "${{ needs.backend-package-musl.result }}" \
+            "${{ needs.docker-build-push-ghcr.result }}" \
+            "${{ needs.jfrog-dry-run.result }}" \
+            "${{ needs.frontend-quality.result }}" \
+            "${{ needs.api-tests.result }}" \
+            "${{ needs.e2e-tests.result }}"; do
+            if [ "$job_result" = "failure" ]; then
+              echo "❌ CRITICAL: One or more upstream jobs failed"
+              ERRORS=$((ERRORS + 1))
+              break
+            fi
+          done
+
+          if [ "$ERRORS" -gt 0 ]; then
+            echo ""
+            echo "❌ Dry run FAILED with $ERRORS critical error(s)"
+            exit 1
+          fi
+
+          echo "✅ Dry run completed successfully"
+

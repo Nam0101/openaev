@@ -2,6 +2,11 @@
 kind: pipeline
 name: openaev-tests
 
+trigger:
+  event:
+    - custom
+    - promote
+
 steps:
   - name: Runner information
     image: alpine:3.23
@@ -123,13 +128,11 @@ steps:
       CIRCLECI_TOKEN:
         from_secret: circleci_token
     when:
+      event:
+        - custom
       branch:
         - master
         - release/*
-      event:
-        exclude:
-          - pull_request
-          - tag
     depends_on:
       - api-tests
       - frontend-tests
@@ -138,13 +141,14 @@ steps:
   - name: build-circleci-release
     image: curlimages/curl
     commands:
-      - curl -X POST --data "tag=$DRONE_TAG" https://circleci.com/api/v1.1/project/github/OpenAEV-Platform/openaev/build?circle-token=$CIRCLECI_TOKEN
+      - 'if [ -z "$DRONE_PARAM_TAG" ]; then echo "ERROR: TAG parameter is required. Use --param TAG=v1.2.3"; exit 1; fi'
+      - curl -X POST --data "tag=$DRONE_PARAM_TAG" https://circleci.com/api/v1.1/project/github/OpenAEV-Platform/openaev/build?circle-token=$CIRCLECI_TOKEN
     environment:
       CIRCLECI_TOKEN:
         from_secret: circleci_token
     when:
       event:
-        - tag
+        - promote
     depends_on:
       - api-tests
       - frontend-tests

@@ -1,0 +1,606 @@
+name: "[Core] CI"
+
+on:
+  push:
+    branches: [master, release/current]
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+  pull_request:
+    branches: [master, release/current]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+
+  spotless-check:
+    name: Spotless Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/spotless-check
+
+  backend-compile:
+    name: Backend Compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/backend-compile
+
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/frontend-build
+
+  frontend-quality:
+    name: Frontend Quality & Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/frontend-quality
+
+  api-tests:
+    name: API Tests (${{ matrix.shard_name }})
+    runs-on: ubuntu-latest
+    # No needs: [backend-compile] — job starts immediately so service
+    # containers boot while we wait for the compile artifacts.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ── Four workers: main, rest-1, rest-2, everything else ──
+          - shard: 1
+            shard_name: main
+            includes: |-
+              io/openaev/api/**/*Test.java
+              io/openaev/integration/**/*Test.java
+              io/openaev/injects/**/*Test.java
+              io/openaev/opencti/**/*Test.java
+              io/openaev/service/**/*Test.java
+          - shard: 2
+            shard_name: rest-1
+            # Packages a–h: root-level rest tests + sub-packages
+            # starting with letters a through h.
+            # NOTE: Surefire uses Ant-style patterns — [a-h] bracket
+            # expressions are NOT supported; list packages explicitly.
+            includes: |-
+              io/openaev/rest/*Test.java
+              io/openaev/rest/asset_group/**/*Test.java
+              io/openaev/rest/attack_pattern/**/*Test.java
+              io/openaev/rest/custom_dashboard/**/*Test.java
+              io/openaev/rest/dashboard/**/*Test.java
+              io/openaev/rest/exercise/**/*Test.java
+          - shard: 3
+            shard_name: rest-2
+            # Everything under rest/ NOT assigned to shard 2.
+            # New rest sub-packages are automatically picked up here.
+            includes: |-
+              io/openaev/rest/**/*Test.java
+            excludes: |-
+              io/openaev/rest/*Test.java
+              io/openaev/rest/asset_group/**/*Test.java
+              io/openaev/rest/attack_pattern/**/*Test.java
+              io/openaev/rest/custom_dashboard/**/*Test.java
+              io/openaev/rest/dashboard/**/*Test.java
+              io/openaev/rest/exercise/**/*Test.java
+          - shard: 4
+            shard_name: remaining
+            # Catch-all: runs every test NOT assigned to shards 1–3.
+            # Any new test package is executed here automatically.
+            includes: catchall
+    env:
+      # ── Union of all explicitly-assigned shard patterns (shards 1–3) ──
+      # The catch-all shard uses this as an *excludes* list, so any test
+      # added in a brand-new package is automatically executed without
+      # having to touch this workflow file.
+      # When you add a pattern to a shard above, mirror it here.
+      EXPLICITLY_SHARDED_TESTS: |-
+        io/openaev/api/**/*Test.java
+        io/openaev/integration/**/*Test.java
+        io/openaev/injects/**/*Test.java
+        io/openaev/opencti/**/*Test.java
+        io/openaev/service/**/*Test.java
+        io/openaev/rest/**/*Test.java
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/openaev
+      SPRING_DATASOURCE_USERNAME: openaev
+      SPRING_DATASOURCE_PASSWORD: openaev
+      MINIO_ENDPOINT: localhost
+      MINIO_PORT: 9000
+      ENGINE_URL: http://localhost:9200
+      OPENBAS_RABBITMQ_HOSTNAME: localhost
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/api-tests
+        with:
+          includes: ${{ matrix.includes }}
+          excludes: ${{ matrix.excludes }}
+          shard: ${{ matrix.shard }}
+          shard-name: ${{ matrix.shard_name }}
+
+
+  backend-package:
+    name: Backend Package
+    needs:
+      - frontend-build
+      - backend-compile
+      - prepare-release-assets
+    # Run even when prepare-release-assets is skipped (PRs).
+    # Note: always() is required so the `if` is evaluated when a dependency
+    # is skipped. !cancelled() alone equals success()||failure() and returns
+    # false for skipped dependencies, which would cascade-skip e2e-tests.
+    if: >-
+      ${{
+        always() &&
+        needs.frontend-build.result == 'success' &&
+        needs.backend-compile.result == 'success' &&
+        (needs.prepare-release-assets.result == 'success' || needs.prepare-release-assets.result == 'skipped')
+      }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/backend-package
+        with:
+          download-release-assets: ${{ needs.prepare-release-assets.result == 'success' }}
+
+  e2e-tests:
+    name: E2E & API Types
+    runs-on: ubuntu-latest
+    # No needs: [backend-package] — job starts immediately so service
+    # containers boot while we wait for the package artifacts.
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/openaev
+      SPRING_DATASOURCE_USERNAME: openaev
+      SPRING_DATASOURCE_PASSWORD: openaev
+      MINIO_ENDPOINT: localhost
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_ACCESS_SECRET: minioadmin
+      ENGINE_URL: http://localhost:9200
+      OPENBAS_RABBITMQ_HOSTNAME: localhost
+      OPENAEV_ADMIN_EMAIL: admin@openaev.io
+      OPENAEV_ADMIN_PASSWORD: admin
+      OPENAEV_ADMIN_TOKEN: 0d17ce9a-f3a8-4c6d-9721-c98dc3dc023f
+      OPENAEV_ADMIN_ENCRYPTION_KEY: ThisIsMyUltraSecureEncryptionKey
+      OPENAEV_ADMIN_ENCRYPTION_SALT: ilikesaltyfoodnomnom
+      SPRING_PROFILES_ACTIVE: ci
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/e2e-tests
+
+  codecov:
+    name: Coverage Merge & Upload
+    needs: [api-tests, frontend-quality, e2e-tests]
+    # Always run so partial coverage (e.g. backend+frontend) is still
+    # uploaded even when one upstream job fails or is cancelled.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      # ── Backend coverage: merge JaCoCo shards, report & check ──────
+      - name: Download compiled Maven artifacts
+        if: needs.api-tests.result == 'success' || needs.api-tests.result == 'failure'
+        uses: actions/download-artifact@v8
+        with:
+          name: backend-compiled
+          path: ~/.m2/repository/io/openaev/
+        continue-on-error: true
+
+      - name: Download API build output
+        if: needs.api-tests.result == 'success' || needs.api-tests.result == 'failure'
+        uses: actions/download-artifact@v8
+        with:
+          name: api-build-output
+          path: openaev-api/target
+        continue-on-error: true
+
+      - name: Download all JaCoCo exec shards
+        if: needs.api-tests.result == 'success' || needs.api-tests.result == 'failure'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: jacoco-exec-shard-*
+          path: jacoco-exec
+        continue-on-error: true
+
+      - name: Merge JaCoCo exec files
+        id: jacoco-merge
+        if: needs.api-tests.result == 'success' || needs.api-tests.result == 'failure'
+        run: |
+          echo "📦 Merging JaCoCo exec files from all shards..."
+          EXEC_FILES=$(find jacoco-exec -name 'jacoco.exec' 2>/dev/null)
+          if [ -z "$EXEC_FILES" ]; then
+            echo "⚠️ No JaCoCo exec files found — all test shards may have failed"
+            echo "  Contents of jacoco-exec/:"
+            ls -laR jacoco-exec/ 2>/dev/null || echo "  directory does not exist"
+            exit 1
+          fi
+          SHARD_COUNT=$(echo "$EXEC_FILES" | wc -l)
+          echo "  Found $SHARD_COUNT shard exec file(s)"
+          cat jacoco-exec/jacoco-exec-shard-*/jacoco.exec > openaev-api/target/jacoco.exec
+          if [ ! -s "openaev-api/target/jacoco.exec" ]; then
+            echo "❌ Merged jacoco.exec is empty"
+            exit 1
+          fi
+          echo "✅ Merged $SHARD_COUNT shard(s) → $(wc -c < openaev-api/target/jacoco.exec) bytes"
+
+      - name: Coverage report & threshold check
+        if: steps.jacoco-merge.outcome == 'success'
+        run: mvn -B -ntp -pl openaev-api jacoco:report jacoco:check || echo "⚠️ Coverage threshold check ⚠️"
+
+      - name: Upload API coverage report
+        if: ${{ !cancelled() && steps.jacoco-merge.outcome == 'success' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: jacoco-api
+          path: openaev-api/target/site/jacoco/jacoco.xml
+          if-no-files-found: warn
+
+      # ── Download frontend / E2E coverage artifacts ─────────────────
+      - name: Download vitest coverage report
+        if: needs.frontend-quality.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          name: vitest-coverage
+          path: coverage/frontend
+        continue-on-error: true
+
+      - name: Download playwright coverage report
+        if: needs.e2e-tests.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          name: playwright-coverage
+          path: coverage/e2e
+        continue-on-error: true
+
+      # ── Detect which reports are available ─────────────────────────
+      - name: Check available coverage files
+        id: check
+        run: |
+          echo "📊 Coverage files found:"
+          find coverage/ -type f 2>/dev/null || echo "  (none)"
+          find openaev-api/target/site/jacoco/ -type f 2>/dev/null || echo "  (no backend coverage)"
+
+          has() { [ -f "$1" ] && echo "true" || echo "false"; }
+
+          echo "has_backend=$(has openaev-api/target/site/jacoco/jacoco.xml)" >> "$GITHUB_OUTPUT"
+          echo "has_frontend=$(has coverage/frontend/lcov.info)"             >> "$GITHUB_OUTPUT"
+          echo "has_e2e=$(has coverage/e2e/lcov.info)"                       >> "$GITHUB_OUTPUT"
+
+      # ── Upload to Codecov ──────────────────────────────────────────
+      - name: Upload backend coverage to Codecov
+        if: steps.check.outputs.has_backend == 'true'
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: openaev-api/target/site/jacoco/jacoco.xml
+          flags: backend
+          fail_ci_if_error: false
+
+      - name: Upload frontend coverage to Codecov
+        if: steps.check.outputs.has_frontend == 'true'
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage/frontend/lcov.info
+          flags: frontend
+          fail_ci_if_error: false
+
+      - name: Upload E2E coverage to Codecov
+        if: steps.check.outputs.has_e2e == 'true'
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage/e2e/lcov.info
+          flags: e2e
+          fail_ci_if_error: false
+
+  # Download agent/implant binaries and patch catalog version (push only, skipped on PRs)
+  prepare-release-assets:
+    name: Prepare Release Assets
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0        # full history needed for version tags
+
+      - name: Compute versions
+        id: versions
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            echo "binary_version=${TAG}"   >> "$GITHUB_OUTPUT"
+            echo "catalog_version=${TAG}"  >> "$GITHUB_OUTPUT"
+          elif [[ "$GITHUB_REF" == refs/heads/release/current ]]; then
+            echo "binary_version=prerelease"  >> "$GITHUB_OUTPUT"
+            echo "catalog_version=prerelease" >> "$GITHUB_OUTPUT"
+          else
+            echo "binary_version=latest"   >> "$GITHUB_OUTPUT"
+            echo "catalog_version=rolling"  >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download agent & implant binaries
+        run: |
+          BINARY_VERSION="${{ steps.versions.outputs.binary_version }}"
+
+          # Use latest git tag as local filename for non-release builds
+          if [[ "${{ steps.versions.outputs.catalog_version }}" == "rolling" || "${{ steps.versions.outputs.catalog_version }}" == "prerelease" ]]; then
+            LOCAL_VERSION="$(git describe --tags --abbrev=0 2>/dev/null || echo "$BINARY_VERSION")"
+          else
+            LOCAL_VERSION="$BINARY_VERSION"
+          fi
+
+          chmod +x scripts/download-binaries.sh
+          if ! bash scripts/download-binaries.sh "$BINARY_VERSION" "$LOCAL_VERSION"; then
+            echo "❌ download-binaries.sh failed"
+            exit 1
+          fi
+
+          # Verify at least some binaries were downloaded
+          AGENT_COUNT=$(find openaev-api/src/main/resources/agents/ -type f 2>/dev/null | wc -l)
+          IMPLANT_COUNT=$(find openaev-api/src/main/resources/implants/ -type f 2>/dev/null | wc -l)
+          echo "📦 Downloaded $AGENT_COUNT agent(s) and $IMPLANT_COUNT implant(s)"
+          if [ "$AGENT_COUNT" -eq 0 ] && [ "$IMPLANT_COUNT" -eq 0 ]; then
+            echo "⚠️ Warning: No agent or implant binaries were downloaded"
+          fi
+
+      - name: Patch catalog version
+        run: |
+          CATALOG_FILE=openaev-api/src/main/resources/catalog/catalog-integrators.json
+          CATALOG_VERSION="${{ steps.versions.outputs.catalog_version }}"
+
+          if [ ! -f "$CATALOG_FILE" ]; then
+            echo "❌ Catalog file not found: $CATALOG_FILE"
+            ls -la openaev-api/src/main/resources/catalog/ 2>/dev/null || echo "  catalog/ directory does not exist"
+            exit 1
+          fi
+
+          if ! jq --arg ver "$CATALOG_VERSION" \
+            '.contracts[].container_version = $ver | .version = $ver' \
+            "$CATALOG_FILE" > catalog.tmp; then
+            echo "❌ jq failed to patch catalog file (invalid JSON?)"
+            exit 1
+          fi
+
+          if [ ! -s "catalog.tmp" ]; then
+            echo "❌ jq produced empty output"
+            exit 1
+          fi
+
+          # Validate the patched file is still valid JSON
+          if ! jq empty catalog.tmp 2>/dev/null; then
+            echo "❌ Patched catalog file is not valid JSON"
+            exit 1
+          fi
+
+          mv catalog.tmp "$CATALOG_FILE"
+          echo "✅ Catalog version patched to '$CATALOG_VERSION'"
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-assets
+          path: |
+            openaev-api/src/main/resources/agents/
+            openaev-api/src/main/resources/implants/
+            openaev-api/src/main/resources/catalog/
+
+  # Alpine/musl JAR build for Alpine-based Docker images (push only)
+  backend-package-musl:
+    name: Backend Package (musl)
+    needs: [frontend-build, backend-compile, prepare-release-assets]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    container:
+      image: maven:3.9.14-eclipse-temurin-21-alpine
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/backend-package-musl
+
+  # Upload glibc and musl JARs as tar.gz to JFrog (master only)
+  jfrog-upload:
+    name: JFrog Artifact Upload
+    needs: [backend-package, backend-package-musl]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download glibc JAR
+        uses: actions/download-artifact@v8
+        with:
+          name: openaev-api-jar
+          path: glibc-jar
+
+      - name: Download musl JAR
+        uses: actions/download-artifact@v8
+        with:
+          name: openaev-api-jar-musl
+          path: musl-jar
+
+      - name: Download API build output (for application.properties)
+        uses: actions/download-artifact@v8
+        with:
+          name: api-build-output
+          path: build-output
+
+      - name: Package and upload to JFrog
+        run: |
+          set -euo pipefail
+          DATE_STAMP="$(date '+%Y%m%d')"
+
+          # Verify all required files exist before packaging
+          for f in glibc-jar/openaev-api.jar musl-jar/openaev-api.jar build-output/classes/application.properties; do
+            if [ ! -f "$f" ]; then
+              echo "❌ Required file missing: $f"
+              exit 1
+            fi
+          done
+          echo "✅ All required files present"
+
+          # Package glibc variant
+          mkdir -p release-glibc/openaev
+          cp glibc-jar/openaev-api.jar release-glibc/openaev/
+          cp build-output/classes/application.properties release-glibc/openaev/
+          tar -C release-glibc -zcvf "openaev-${DATE_STAMP}.tar.gz" openaev
+
+          # Package musl variant
+          mkdir -p release-musl/openaev
+          cp musl-jar/openaev-api.jar release-musl/openaev/
+          cp build-output/classes/application.properties release-musl/openaev/
+          tar -C release-musl -zcvf "openaev-${DATE_STAMP}_musl.tar.gz" openaev
+
+          # Verify tar.gz files are non-empty
+          for f in "openaev-${DATE_STAMP}.tar.gz" "openaev-${DATE_STAMP}_musl.tar.gz"; do
+            if [ ! -s "$f" ]; then
+              echo "❌ Archive is empty or missing: $f"
+              exit 1
+            fi
+          done
+
+          # Upload glibc variant to JFrog
+          HTTP_CODE=$(curl --fail --retry 3 -w "%{http_code}" -o /tmp/jfrog-resp-glibc.txt \
+            -u "${{ secrets.JFROG_USER }}:${{ secrets.JFROG_TOKEN }}" \
+            -T "openaev-${DATE_STAMP}.tar.gz" \
+            "https://filigran.jfrog.io/artifactory/openaev/openaev-${DATE_STAMP}.tar.gz" || true)
+          if [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ JFrog upload failed for glibc variant (HTTP $HTTP_CODE)"
+            cat /tmp/jfrog-resp-glibc.txt 2>/dev/null || true
+            exit 1
+          fi
+          echo "✅ Uploaded glibc variant (HTTP $HTTP_CODE)"
+
+          # Upload musl variant to JFrog
+          HTTP_CODE=$(curl --fail --retry 3 -w "%{http_code}" -o /tmp/jfrog-resp-musl.txt \
+            -u "${{ secrets.JFROG_USER }}:${{ secrets.JFROG_TOKEN }}" \
+            -T "openaev-${DATE_STAMP}_musl.tar.gz" \
+            "https://filigran.jfrog.io/artifactory/openaev/openaev-${DATE_STAMP}_musl.tar.gz" || true)
+          if [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ JFrog upload failed for musl variant (HTTP $HTTP_CODE)"
+            cat /tmp/jfrog-resp-musl.txt 2>/dev/null || true
+            exit 1
+          fi
+          echo "✅ Uploaded musl variant (HTTP $HTTP_CODE)"
+
+  # Build and push Docker image using pre-built JAR (push only, all quality gates must pass)
+  docker-build-push:
+    name: Docker Build & Push
+    needs: [spotless-check, api-tests, frontend-quality, e2e-tests, backend-package, prepare-release-assets]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0        # full history needed to compare semver tags
+
+      # JAR from backend-package (explicit dependency)
+      - name: Download backend JAR artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: openaev-api-jar
+          path: openaev-build
+
+      - name: Verify backend JAR for Docker build
+        run: |
+          if [ ! -f "openaev-build/openaev-api.jar" ]; then
+            echo "❌ openaev-api.jar not found in openaev-build/"
+            ls -la openaev-build/ 2>/dev/null || echo "  directory does not exist"
+            exit 1
+          fi
+          JAR_SIZE=$(stat --format=%s openaev-build/openaev-api.jar 2>/dev/null || stat -f%z openaev-build/openaev-api.jar 2>/dev/null)
+          if [ "$JAR_SIZE" -lt 1000 ] 2>/dev/null; then
+            echo "❌ openaev-api.jar is suspiciously small ($JAR_SIZE bytes)"
+            exit 1
+          fi
+          echo "✅ openaev-api.jar present for Docker build ($JAR_SIZE bytes)"
+
+      - name: Set up QEMU (multi-arch emulation)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Compare the current tag against the highest semver tag so that
+      # backport releases (e.g. 2.2.1 when 2.3.0 exists) do NOT get
+      # the "latest" Docker tag — only the newest release does.
+      - name: Determine if current tag is the latest semver release
+        id: latest-check
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          CURRENT_TAG="${GITHUB_REF#refs/tags/}"
+          # List all strict semver tags, sort numerically, pick highest
+          NEWEST_TAG=$(git tag --list '[0-9]*.[0-9]*.[0-9]*' \
+            | sort -V | tail -n1)
+          if [ "$CURRENT_TAG" = "$NEWEST_TAG" ]; then
+            echo "is_latest=true" >> "$GITHUB_OUTPUT"
+            echo "✅ $CURRENT_TAG is the newest semver tag → applying 'latest'"
+          else
+            echo "is_latest=false" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ $CURRENT_TAG is NOT the newest (newest: $NEWEST_TAG) → skipping 'latest'"
+          fi
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: openaev/platform
+          # Tag strategy: rolling (master), prerelease (release/current),
+          # semver (tags), latest (only if tag is the highest semver)
+          tags: |
+            type=raw,value=rolling,enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=prerelease,enable=${{ github.ref == 'refs/heads/release/current' }}
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ steps.latest-check.outputs.is_latest == 'true' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile_ga
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  # Trigger CircleCI deploy pipeline
+  trigger-circleci:
+    name: Trigger CircleCI (branch)
+    needs: [docker-build-push]
+    if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger CircleCI build for branch
+        run: |
+          HTTP_CODE=$(curl -s -o /tmp/circleci-resp.txt -w "%{http_code}" \
+            --fail --retry 3 \
+            -X POST \
+            --data "branch=${{ github.ref_name }}" \
+            "https://circleci.com/api/v1.1/project/github/OpenAEV-Platform/openaev/build?circle-token=$CIRCLECI_TOKEN" || true)
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
+            echo "❌ CircleCI trigger failed (HTTP $HTTP_CODE)"
+            cat /tmp/circleci-resp.txt 2>/dev/null || true
+            exit 1
+          fi
+          echo "✅ CircleCI build triggered (HTTP $HTTP_CODE)"
+        env:
+          CIRCLECI_TOKEN: ${{ secrets.CIRCLECI_TOKEN }}
