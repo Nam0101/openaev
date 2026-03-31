@@ -1,0 +1,159 @@
+name: JFrog Package
+description: >
+  Download glibc and musl JAR artifacts, package them as tar.gz archives
+  with application.properties, validate archive contents, and either
+  upload to JFrog (production) or save as GitHub artifacts (dry-run).
+
+inputs:
+  dry-run:
+    description: >
+      When 'true', upload archives as GitHub artifacts instead of JFrog.
+    required: false
+    default: 'false'
+  jfrog-user:
+    description: JFrog username (required when dry-run is 'false')
+    required: false
+    default: ''
+  jfrog-token:
+    description: JFrog token (required when dry-run is 'false')
+    required: false
+    default: ''
+
+outputs:
+  date_stamp:
+    description: Date stamp used for archive naming (YYYYMMDD)
+    value: ${{ steps.package.outputs.date_stamp }}
+  glibc_archive_size_mb:
+    description: Size of glibc archive in MB
+    value: ${{ steps.package.outputs.glibc_archive_size_mb }}
+  musl_archive_size_mb:
+    description: Size of musl archive in MB
+    value: ${{ steps.package.outputs.musl_archive_size_mb }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download glibc JAR
+      uses: actions/download-artifact@v8
+      with:
+        name: openaev-api-jar
+        path: glibc-jar
+
+    - name: Download musl JAR
+      uses: actions/download-artifact@v8
+      with:
+        name: openaev-api-jar-musl
+        path: musl-jar
+
+    - name: Download API build output (for application.properties)
+      uses: actions/download-artifact@v8
+      with:
+        name: api-build-output
+        path: build-output
+
+    - name: Package and validate tar.gz archives
+      id: package
+      run: |
+        set -euo pipefail
+        DATE_STAMP="$(date '+%Y%m%d')"
+        echo "date_stamp=${DATE_STAMP}" >> "$GITHUB_OUTPUT"
+
+        for f in glibc-jar/openaev-api.jar musl-jar/openaev-api.jar build-output/classes/application.properties; do
+          if [ ! -f "$f" ]; then
+            echo "❌ Required file missing: $f"
+            exit 1
+          fi
+        done
+        echo "✅ All required files present"
+
+        mkdir -p release-glibc/openaev
+        cp glibc-jar/openaev-api.jar release-glibc/openaev/
+        cp build-output/classes/application.properties release-glibc/openaev/
+        tar -C release-glibc -zcvf "openaev-${DATE_STAMP}.tar.gz" openaev
+
+        mkdir -p release-musl/openaev
+        cp musl-jar/openaev-api.jar release-musl/openaev/
+        cp build-output/classes/application.properties release-musl/openaev/
+        tar -C release-musl -zcvf "openaev-${DATE_STAMP}_musl.tar.gz" openaev
+
+        for variant in "" "_musl"; do
+          ARCHIVE="openaev-${DATE_STAMP}${variant}.tar.gz"
+          if [ ! -s "$ARCHIVE" ]; then
+            echo "❌ Archive is empty or missing: $ARCHIVE"
+            exit 1
+          fi
+          ARCHIVE_SIZE=$(stat --format=%s "$ARCHIVE")
+          ARCHIVE_SIZE_MB=$(awk "BEGIN {printf \"%.1f\", $ARCHIVE_SIZE / 1048576}")
+          echo "  ${ARCHIVE}: ${ARCHIVE_SIZE_MB} MB"
+
+          CONTENTS=$(tar -tzf "$ARCHIVE")
+          echo "  Contents:"
+          echo "$CONTENTS" | sed 's/^/    /'
+
+          EXPECTED_FILES=("openaev/openaev-api.jar" "openaev/application.properties")
+          for expected in "${EXPECTED_FILES[@]}"; do
+            if ! echo "$CONTENTS" | grep -q "$expected"; then
+              echo "  ❌ Missing expected file in archive: $expected"
+              exit 1
+            fi
+          done
+          echo "  ✅ Archive valid"
+        done
+
+        GLIBC_SIZE=$(stat --format=%s "openaev-${DATE_STAMP}.tar.gz")
+        MUSL_SIZE=$(stat --format=%s "openaev-${DATE_STAMP}_musl.tar.gz")
+        GLIBC_SIZE_MB=$(awk "BEGIN {printf \"%.1f\", $GLIBC_SIZE / 1048576}")
+        MUSL_SIZE_MB=$(awk "BEGIN {printf \"%.1f\", $MUSL_SIZE / 1048576}")
+        echo "glibc_archive_size_mb=${GLIBC_SIZE_MB}" >> "$GITHUB_OUTPUT"
+        echo "musl_archive_size_mb=${MUSL_SIZE_MB}"   >> "$GITHUB_OUTPUT"
+      shell: bash
+
+    - name: Upload to JFrog
+      if: ${{ inputs.dry-run != 'true' }}
+      run: |
+        set -euo pipefail
+        DATE_STAMP="${{ steps.package.outputs.date_stamp }}"
+
+        HTTP_CODE=$(curl --fail --retry 3 -w "%{http_code}" -o /tmp/jfrog-resp-glibc.txt \
+          -u "${{ inputs.jfrog-user }}:${{ inputs.jfrog-token }}" \
+          -T "openaev-${DATE_STAMP}.tar.gz" \
+          "https://filigran.jfrog.io/artifactory/openaev/openaev-${DATE_STAMP}.tar.gz" || true)
+        if [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "200" ]; then
+          echo "❌ JFrog upload failed for glibc variant (HTTP $HTTP_CODE)"
+          cat /tmp/jfrog-resp-glibc.txt 2>/dev/null || true
+          exit 1
+        fi
+        echo "✅ Uploaded glibc variant (HTTP $HTTP_CODE)"
+
+        HTTP_CODE=$(curl --fail --retry 3 -w "%{http_code}" -o /tmp/jfrog-resp-musl.txt \
+          -u "${{ inputs.jfrog-user }}:${{ inputs.jfrog-token }}" \
+          -T "openaev-${DATE_STAMP}_musl.tar.gz" \
+          "https://filigran.jfrog.io/artifactory/openaev/openaev-${DATE_STAMP}_musl.tar.gz" || true)
+        if [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "200" ]; then
+          echo "❌ JFrog upload failed for musl variant (HTTP $HTTP_CODE)"
+          cat /tmp/jfrog-resp-musl.txt 2>/dev/null || true
+          exit 1
+        fi
+        echo "✅ Uploaded musl variant (HTTP $HTTP_CODE)"
+      shell: bash
+
+    - name: Log simulated JFrog targets (dry-run)
+      if: ${{ inputs.dry-run == 'true' }}
+      run: |
+        DATE_STAMP="${{ steps.package.outputs.date_stamp }}"
+        GLIBC_MB="${{ steps.package.outputs.glibc_archive_size_mb }}"
+        MUSL_MB="${{ steps.package.outputs.musl_archive_size_mb }}"
+        echo ""
+        echo "── JFrog upload targets (NOT uploaded in dry run) ──"
+        echo "  https://filigran.jfrog.io/artifactory/openaev/openaev-${DATE_STAMP}.tar.gz (${GLIBC_MB} MB)"
+        echo "  https://filigran.jfrog.io/artifactory/openaev/openaev-${DATE_STAMP}_musl.tar.gz (${MUSL_MB} MB)"
+      shell: bash
+
+    - name: Upload dry-run archives as GitHub artifacts
+      if: ${{ inputs.dry-run == 'true' }}
+      uses: actions/upload-artifact@v6
+      with:
+        name: jfrog-dry-run-archives
+        path: |
+          openaev-*.tar.gz
+

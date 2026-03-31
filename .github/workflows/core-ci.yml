@@ -19,35 +19,35 @@ permissions:
 jobs:
 
   spotless-check:
-    name: Spotless Check
+    name: "🔍 Spotless Check"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/spotless-check
 
   backend-compile:
-    name: Backend Compile
+    name: "🔨 Backend Compile"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/backend-compile
 
   frontend-build:
-    name: Frontend Build
+    name: "🎨 Frontend Build"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/frontend-build
 
   frontend-quality:
-    name: Frontend Quality & Unit Tests
+    name: "🧪 Frontend Quality & Unit Tests"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/frontend-quality
 
   api-tests:
-    name: API Tests (${{ matrix.shard_name }})
+    name: "🧪 API Tests (${{ matrix.shard_name }})"
     runs-on: ubuntu-latest
     # No needs: [backend-compile] — job starts immediately so service
     # containers boot while we wait for the compile artifacts.
@@ -127,7 +127,7 @@ jobs:
 
 
   backend-package:
-    name: Backend Package
+    name: "📦 Backend Package (glibc)"
     needs:
       - frontend-build
       - backend-compile
@@ -151,7 +151,7 @@ jobs:
           download-release-assets: ${{ needs.prepare-release-assets.result == 'success' }}
 
   e2e-tests:
-    name: E2E & API Types
+    name: "🧪 E2E & API Types"
     runs-on: ubuntu-latest
     # No needs: [backend-package] — job starts immediately so service
     # containers boot while we wait for the package artifacts.
@@ -177,7 +177,7 @@ jobs:
       - uses: ./.github/actions/e2e-tests
 
   codecov:
-    name: Coverage Merge & Upload
+    name: "📊 Coverage Merge & Upload"
     needs: [api-tests, frontend-quality, e2e-tests]
     # Always run so partial coverage (e.g. backend+frontend) is still
     # uploaded even when one upstream job fails or is cancelled.
@@ -312,7 +312,7 @@ jobs:
 
   # Download agent/implant binaries and patch catalog version (push only, skipped on PRs)
   prepare-release-assets:
-    name: Prepare Release Assets
+    name: "📦 Prepare Release Assets"
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -403,7 +403,7 @@ jobs:
 
   # Alpine/musl JAR build for Alpine-based Docker images (push only)
   backend-package-musl:
-    name: Backend Package (musl)
+    name: "📦 Backend Package (musl)"
     needs: [frontend-build, backend-compile, prepare-release-assets]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -415,90 +415,19 @@ jobs:
 
   # Upload glibc and musl JARs as tar.gz to JFrog (master only)
   jfrog-upload:
-    name: JFrog Artifact Upload
+    name: "📤 JFrog Artifact Upload"
     needs: [backend-package, backend-package-musl]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
-      - name: Download glibc JAR
-        uses: actions/download-artifact@v8
+      - uses: ./.github/actions/jfrog-package
         with:
-          name: openaev-api-jar
-          path: glibc-jar
-
-      - name: Download musl JAR
-        uses: actions/download-artifact@v8
-        with:
-          name: openaev-api-jar-musl
-          path: musl-jar
-
-      - name: Download API build output (for application.properties)
-        uses: actions/download-artifact@v8
-        with:
-          name: api-build-output
-          path: build-output
-
-      - name: Package and upload to JFrog
-        run: |
-          set -euo pipefail
-          DATE_STAMP="$(date '+%Y%m%d')"
-
-          # Verify all required files exist before packaging
-          for f in glibc-jar/openaev-api.jar musl-jar/openaev-api.jar build-output/classes/application.properties; do
-            if [ ! -f "$f" ]; then
-              echo "❌ Required file missing: $f"
-              exit 1
-            fi
-          done
-          echo "✅ All required files present"
-
-          # Package glibc variant
-          mkdir -p release-glibc/openaev
-          cp glibc-jar/openaev-api.jar release-glibc/openaev/
-          cp build-output/classes/application.properties release-glibc/openaev/
-          tar -C release-glibc -zcvf "openaev-${DATE_STAMP}.tar.gz" openaev
-
-          # Package musl variant
-          mkdir -p release-musl/openaev
-          cp musl-jar/openaev-api.jar release-musl/openaev/
-          cp build-output/classes/application.properties release-musl/openaev/
-          tar -C release-musl -zcvf "openaev-${DATE_STAMP}_musl.tar.gz" openaev
-
-          # Verify tar.gz files are non-empty
-          for f in "openaev-${DATE_STAMP}.tar.gz" "openaev-${DATE_STAMP}_musl.tar.gz"; do
-            if [ ! -s "$f" ]; then
-              echo "❌ Archive is empty or missing: $f"
-              exit 1
-            fi
-          done
-
-          # Upload glibc variant to JFrog
-          HTTP_CODE=$(curl --fail --retry 3 -w "%{http_code}" -o /tmp/jfrog-resp-glibc.txt \
-            -u "${{ secrets.JFROG_USER }}:${{ secrets.JFROG_TOKEN }}" \
-            -T "openaev-${DATE_STAMP}.tar.gz" \
-            "https://filigran.jfrog.io/artifactory/openaev/openaev-${DATE_STAMP}.tar.gz" || true)
-          if [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "200" ]; then
-            echo "❌ JFrog upload failed for glibc variant (HTTP $HTTP_CODE)"
-            cat /tmp/jfrog-resp-glibc.txt 2>/dev/null || true
-            exit 1
-          fi
-          echo "✅ Uploaded glibc variant (HTTP $HTTP_CODE)"
-
-          # Upload musl variant to JFrog
-          HTTP_CODE=$(curl --fail --retry 3 -w "%{http_code}" -o /tmp/jfrog-resp-musl.txt \
-            -u "${{ secrets.JFROG_USER }}:${{ secrets.JFROG_TOKEN }}" \
-            -T "openaev-${DATE_STAMP}_musl.tar.gz" \
-            "https://filigran.jfrog.io/artifactory/openaev/openaev-${DATE_STAMP}_musl.tar.gz" || true)
-          if [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "200" ]; then
-            echo "❌ JFrog upload failed for musl variant (HTTP $HTTP_CODE)"
-            cat /tmp/jfrog-resp-musl.txt 2>/dev/null || true
-            exit 1
-          fi
-          echo "✅ Uploaded musl variant (HTTP $HTTP_CODE)"
+          jfrog-user: ${{ secrets.JFROG_USER }}
+          jfrog-token: ${{ secrets.JFROG_TOKEN }}
 
   # Build and push Docker image using pre-built JAR (push only, all quality gates must pass)
   docker-build-push:
-    name: Docker Build & Push
+    name: "🐳 Docker Build & Push"
     needs: [spotless-check, api-tests, frontend-quality, e2e-tests, backend-package, prepare-release-assets]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -506,39 +435,6 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0        # full history needed to compare semver tags
-
-      # JAR from backend-package (explicit dependency)
-      - name: Download backend JAR artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: openaev-api-jar
-          path: openaev-build
-
-      - name: Verify backend JAR for Docker build
-        run: |
-          if [ ! -f "openaev-build/openaev-api.jar" ]; then
-            echo "❌ openaev-api.jar not found in openaev-build/"
-            ls -la openaev-build/ 2>/dev/null || echo "  directory does not exist"
-            exit 1
-          fi
-          JAR_SIZE=$(stat --format=%s openaev-build/openaev-api.jar 2>/dev/null || stat -f%z openaev-build/openaev-api.jar 2>/dev/null)
-          if [ "$JAR_SIZE" -lt 1000 ] 2>/dev/null; then
-            echo "❌ openaev-api.jar is suspiciously small ($JAR_SIZE bytes)"
-            exit 1
-          fi
-          echo "✅ openaev-api.jar present for Docker build ($JAR_SIZE bytes)"
-
-      - name: Set up QEMU (multi-arch emulation)
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # Compare the current tag against the highest semver tag so that
       # backport releases (e.g. 2.2.1 when 2.3.0 exists) do NOT get
@@ -572,19 +468,16 @@ jobs:
             type=semver,pattern={{version}}
             type=raw,value=latest,enable=${{ steps.latest-check.outputs.is_latest == 'true' }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
+      - uses: ./.github/actions/docker-build-push
         with:
-          context: .
-          file: ./Dockerfile_ga
-          platforms: linux/amd64,linux/arm64
-          push: true
+          registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
   # Trigger CircleCI deploy pipeline
   trigger-circleci:
-    name: Trigger CircleCI (branch)
+    name: "🔄 Trigger CircleCI (branch)"
     needs: [docker-build-push]
     if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
