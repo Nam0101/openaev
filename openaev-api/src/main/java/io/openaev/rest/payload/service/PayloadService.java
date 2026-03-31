@@ -191,17 +191,18 @@ public class PayloadService {
           .getArguments()
           .forEach(
               payloadArgument -> {
-                if (ArgumentType.Text == payloadArgument.getType()) {
+                if (ArgumentType.TargetedAsset == payloadArgument.getType()) {
+                  List<ContractElement> targetedAssetsFields =
+                      targetedAssetFields(payloadArgument.getKey(), payloadArgument);
+                  targetedAssetsFields.forEach(builder::mandatory);
+                } else {
+                  // Text, Number, Port, PortsScan, IPv4, IPv6, Credentials, CVE, Document
+                  // — all stored and retrieved as plain text in the inject content
                   builder.mandatory(
                       textField(
                           payloadArgument.getKey(),
                           payloadArgument.getKey(),
                           payloadArgument.getDefaultValue()));
-
-                } else if (ArgumentType.TargetedAsset == payloadArgument.getType()) {
-                  List<ContractElement> targetedAssetsFields =
-                      targetedAssetFields(payloadArgument.getKey(), payloadArgument);
-                  targetedAssetsFields.forEach(builder::mandatory);
                 }
               });
     }
