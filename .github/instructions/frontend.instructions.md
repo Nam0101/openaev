@@ -5,11 +5,9 @@ description: "Frontend React/TypeScript conventions: components, MUI, forms, per
 
 # Frontend Conventions
 
-> Templates: see [new-frontend-feature.prompt.md](../prompts/new-frontend-feature.prompt.md). Reference examples: search for existing features in `src/admin/components/`.
-
 ## File Structure
 
-- Use `snake_case` for folder names, one folder per feature
+- Use `snake_case` for folder names, one folder per feature, one file per behavior
 - Split by behavior: `{feature}-action.ts`, `{feature}-helper.d.ts`, `{feature}-schema.ts`
 - Pages in `src/admin/components/{section}/{feature}/`
 

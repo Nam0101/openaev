@@ -5,7 +5,7 @@
 ## What is OpenAEV?
 
 OpenAEV — Breach & Attack Simulation platform. Multi-tenant SaaS (**multi-tenancy is actively being developed** — not all entities are tenant-scoped yet).
-Java 21 / Spring Boot 3.3.7 / React 19 / TypeScript / PostgreSQL.
+Java / Spring Boot / React / TypeScript / PostgreSQL. See `pom.xml` and `package.json` for exact versions.
 
 ## Modules
 
@@ -41,15 +41,6 @@ Do NOT look for conventions here — they live in dedicated instruction files, a
 | **Testing** (unit, integration, coverage) | [testing.instructions.md](.github/instructions/testing.instructions.md) | `**/*Test.java`, `**/*.test.tsx` |
 | **Code Review** (review checklist) | [code-review.instructions.md](.github/instructions/code-review.instructions.md) | All files |
 
-## Prompts (code generation templates)
-
-| Prompt | Use when... |
-|---|---|
-| [new-api-endpoint](.github/prompts/new-api-endpoint.prompt.md) | Creating a new REST endpoint (controller + service + DTOs) |
-| [new-entity](.github/prompts/new-entity.prompt.md) | Adding a new JPA entity (quick checklist → delegates to `create-feature-module` skill) |
-| [new-frontend-feature](.github/prompts/new-frontend-feature.prompt.md) | Scaffolding a new frontend feature module |
-| [new-migration](.github/prompts/new-migration.prompt.md) | Writing a Flyway migration (quick ref → delegates to `add-migration` skill) |
-| [new-rbac-resource](.github/prompts/new-rbac-resource.prompt.md) | Adding RBAC permissions for a new resource |
 
 ## Skills (step-by-step procedures)
 

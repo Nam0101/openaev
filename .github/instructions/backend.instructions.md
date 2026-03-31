@@ -34,22 +34,26 @@ For each entity exposed via REST, create three files in the same `io.openaev.api
 - **`{Entity}Mapper.java`** — Utility class with `private` constructor, static methods `toOutput(Entity)` and optionally `fromInput(String id, Input)`
 
 ```java
-// Example: PlatformRoleOutput.java
-public record PlatformRoleOutput(
-    @JsonProperty("platform_role_id") @NotBlank String id,
-    @JsonProperty("platform_role_name") @NotBlank String name,
-    ...) {}
+// DTOs — immutable Java record
+public record {Entity}Input(
+    @JsonProperty("entity_name") @NotBlank String name,
+    @JsonProperty("entity_description") String description) {}
 
-// Example: PlatformRoleMapper.java
-public class PlatformRoleMapper {
-  private PlatformRoleMapper() {}
-  public static PlatformRoleOutput toOutput(PlatformRole role) { ... }
+public record {Entity}Output(
+    @JsonProperty("entity_id") @NotBlank String id,
+    @JsonProperty("entity_name") @NotBlank String name,
+    @JsonProperty("entity_description") String description) {}
+
+// Mapper
+public class {Entity}Mapper {
+  private {Entity}Mapper() {}
+  public static {Entity}Output toOutput({Entity} entity) { ... }
 }
 
 // Usage in controller (static import):
-import static io.openaev.api.platform.PlatformRoleMapper.toOutput;
-public PlatformRoleOutput findById(...) { return toOutput(service.findById(id)); }
-public Page<PlatformRoleOutput> search(...) { return service.search(input).map(Mapper::toOutput); }
+import static io.openaev.api.feature.{Entity}Mapper.toOutput;
+public {Entity}Output findById(...) { return toOutput(service.findById(id)); }
+public Page<{Entity}Output> search(...) { return service.search(input).map({Entity}Mapper::toOutput); }
 ```
 
 ## Entities

@@ -11,11 +11,35 @@ Every REST endpoint must have `@AccessControl`. See the annotation in `io.openae
 
 ## Adding a new resource type
 
+### Backend
+
 1. `ResourceType.java` — add enum value
 2. `Capability.java` — add ACCESS/MANAGE/DELETE with parent hierarchy
 3. `@AccessControl` on all endpoints
-4. If grant-managed: add to `RESOURCES_MANAGED_BY_GRANTS`
-5. If open for READ: add to `RESOURCES_OPEN`
+4. Configure access model in `PermissionService.java`:
+   - Grant-managed (like Scenario): add to `RESOURCES_MANAGED_BY_GRANTS`
+   - Open for READ (like Player): add to `RESOURCES_OPEN`
+   - Sub-resource (like Inject): add to `RESOURCES_USING_PARENT_PERMISSION`
+   - Standard capability-based: no change (handled by `Capability.of()` lookup)
+
+### Frontend
+
+5. `types.ts` — add SUBJECT if new category:
+   ```typescript
+   export const SUBJECTS = { ...existing, MY_FEATURE: 'MY_FEATURE' } as const;
+   ```
+   Parser auto-maps `ACCESS_MY_FEATURE` → `[ACCESS, MY_FEATURE]`.
+
+6. Use in components:
+   ```typescript
+   const canAccess = ability.can(ACTIONS.ACCESS, SUBJECTS.MY_FEATURE);
+   ```
+
+7. For grant-based resources, create a permission hook (follow `useScenarioPermissions.ts`):
+   ```typescript
+   const canAccess = ability.can(ACTIONS.ACCESS, SUBJECTS.RESOURCE, resourceId)
+       || ability.can(ACTIONS.ACCESS, SUBJECTS.MY_FEATURE);
+   ```
 
 ## Tenant Isolation
 

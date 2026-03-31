@@ -28,6 +28,7 @@ description: "Database conventions: schema naming, Flyway migrations, PostgreSQL
 ## Flyway Migrations
 
 - Java-based: `V4_{next}__Description.java` in `io.openaev.migration`
+- Find next number: `ls openaev-api/src/main/java/io/openaev/migration/ | sort | tail -5`
 - Extends `BaseJavaMigration`, annotated `@Component`
 - Use `context.getConnection().createStatement()` for raw SQL
 - Batch: `statement.addBatch(...)` then `statement.executeBatch()`

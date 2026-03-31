@@ -86,7 +86,7 @@ Location: `openaev-api/src/test/java/io/openaev/rest/` or `api/`
 
 ### Step 10 — Create Frontend Actions + Page
 
-> Follow [new-frontend-feature.prompt.md](../../prompts/new-frontend-feature.prompt.md) for detailed templates and conventions from [frontend.instructions.md](../../instructions/frontend.instructions.md).
+> Follow templates and conventions from [frontend.instructions.md](../../instructions/frontend.instructions.md).
 
 Location: `openaev-front/src/actions/{feature}/` and `src/admin/components/`
 

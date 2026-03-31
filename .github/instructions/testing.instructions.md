@@ -5,8 +5,6 @@ description: "Testing conventions: integration tests, unit tests, fixtures, comp
 
 # Testing Conventions
 
-> Step-by-step procedure: see [skills/add-test/SKILL.md](../skills/add-test/SKILL.md). Reference examples: search for `GroupApiTest.java` or `RoleApiTest.java`.
-
 ## Integration Tests (API)
 
 - Extend `IntegrationTest`
