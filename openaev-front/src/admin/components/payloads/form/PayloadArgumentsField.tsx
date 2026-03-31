@@ -25,10 +25,6 @@ const SUBTYPE_OPTIONS: Partial<Record<PayloadArgument['type'], {
 }[]>> = {
   portscan: [
     {
-      value: 'asset_id',
-      label: 'Asset ID',
-    },
-    {
       value: 'host',
       label: 'Host',
     },
@@ -52,10 +48,6 @@ const SUBTYPE_OPTIONS: Partial<Record<PayloadArgument['type'], {
     },
   ],
   cve: [
-    {
-      value: 'asset_id',
-      label: 'Asset ID',
-    },
     {
       value: 'id',
       label: 'ID',
