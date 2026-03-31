@@ -74,7 +74,7 @@ const PayloadArgumentsField = ({ argumentName, canSelectTargetAsset, onArgumentR
   const previousTypeRef = useRef<PayloadArgument['type']>(argumentType);
   useEffect(() => {
     if (previousTypeRef.current !== argumentType) {
-      setValue(`${argumentName}.subtype`, null);
+      setValue(`${argumentName}.subtype`, undefined);
     }
     previousTypeRef.current = argumentType;
   }, [argumentType, argumentName, setValue]);
