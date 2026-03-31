@@ -66,11 +66,6 @@ const PayloadArgumentsField = ({ argumentName, canSelectTargetAsset, onArgumentR
   /** Types that require the INJECT_CHAINING feature flag to be selectable. */
   const isChainingEnabled = isFeatureEnabled('INJECT_CHAINING');
 
-  /**
-   * Track the previous type so the subtype is cleared only when the user
-   * actually changes the type — not on initial mount, which would wipe
-   * existing subtype values when editing a saved argument.
-   */
   const previousTypeRef = useRef<PayloadArgument['type']>(argumentType);
   useEffect(() => {
     if (previousTypeRef.current !== argumentType) {
@@ -97,7 +92,6 @@ const PayloadArgumentsField = ({ argumentName, canSelectTargetAsset, onArgumentR
           label: t('Targeted assets'),
         }]
       : [],
-    // Gated behind INJECT_CHAINING feature flag (mirror of ContractOutputType processor types)
     ...(isChainingEnabled
       ? [
           {
@@ -167,7 +161,6 @@ const PayloadArgumentsField = ({ argumentName, canSelectTargetAsset, onArgumentR
         required
       />
       <TextFieldController name={`${argumentName}.key` as const} label={t('Key')} required />
-      {/* Sub-type selector — only for structured output types when chaining is enabled */}
       {isChainingEnabled && isStructured && (
         <SelectFieldController
           name={`${argumentName}.subtype` as const}
