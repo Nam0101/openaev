@@ -1,8 +1,9 @@
 import { DeleteOutlined } from '@mui/icons-material';
 import { IconButton } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Controller, useFormContext } from 'react-hook-form';
+
 import DocumentField from '../../../../components/fields/DocumentField';
 import SelectFieldController from '../../../../components/fields/SelectFieldController';
 import SeparatorFieldController from '../../../../components/fields/SeparatorFieldController';
@@ -16,32 +17,57 @@ interface Props {
   onArgumentRemoveClick: () => void;
 }
 /** Argument types that have processor sub-fields and therefore support a subtype selection. */
-const STRUCTURED_TYPES = new Set<PayloadArgument['type']>(['portscan', 'credentials', 'cve', 'asset']);
+const STRUCTURED_TYPES = new Set<PayloadArgument['type']>(['portscan', 'credentials', 'cve']);
 /** Sub-field options keyed by ArgumentType label. */
-const SUBTYPE_OPTIONS: Partial<Record<PayloadArgument['type'], { value: string; label: string }[]>> = {
+const SUBTYPE_OPTIONS: Partial<Record<PayloadArgument['type'], {
+  value: string;
+  label: string;
+}[]>> = {
   portscan: [
-    { value: 'asset_id', label: 'Asset ID' },
-    { value: 'host', label: 'Host' },
-    { value: 'port', label: 'Port' },
-    { value: 'service', label: 'Service' },
+    {
+      value: 'asset_id',
+      label: 'Asset ID',
+    },
+    {
+      value: 'host',
+      label: 'Host',
+    },
+    {
+      value: 'port',
+      label: 'Port',
+    },
+    {
+      value: 'service',
+      label: 'Service',
+    },
   ],
   credentials: [
-    { value: 'username', label: 'Username' },
-    { value: 'password', label: 'Password' },
+    {
+      value: 'username',
+      label: 'Username',
+    },
+    {
+      value: 'password',
+      label: 'Password',
+    },
   ],
   cve: [
-    { value: 'asset_id', label: 'Asset ID' },
-    { value: 'id', label: 'ID' },
-    { value: 'host', label: 'Host' },
-    { value: 'severity', label: 'Severity' },
-  ],
-  asset: [
-    { value: 'name', label: 'Name' },
-    { value: 'type', label: 'Type' },
-    { value: 'description', label: 'Description' },
-    { value: 'external_reference', label: 'External reference' },
-    { value: 'tags', label: 'Tags' },
-    { value: 'extended_attributes', label: 'Extended attributes' },
+    {
+      value: 'asset_id',
+      label: 'Asset ID',
+    },
+    {
+      value: 'id',
+      label: 'ID',
+    },
+    {
+      value: 'host',
+      label: 'Host',
+    },
+    {
+      value: 'severity',
+      label: 'Severity',
+    },
   ],
 };
 const PayloadArgumentsField = ({ argumentName, canSelectTargetAsset, onArgumentRemoveClick }: Props) => {
@@ -51,32 +77,85 @@ const PayloadArgumentsField = ({ argumentName, canSelectTargetAsset, onArgumentR
   const argumentType: PayloadArgument['type'] = watch(`${argumentName}.type`);
   /** Types that require the INJECT_CHAINING feature flag to be selectable. */
   const isChainingEnabled = isFeatureEnabled('INJECT_CHAINING');
-  /** Clear the subtype whenever the user switches to a different argument type. */
+
+  /**
+   * Track the previous type so the subtype is cleared only when the user
+   * actually changes the type — not on initial mount, which would wipe
+   * existing subtype values when editing a saved argument.
+   */
+  const previousTypeRef = useRef<PayloadArgument['type']>(argumentType);
   useEffect(() => {
-    setValue(`${argumentName}.subtype`, null);
+    if (previousTypeRef.current !== argumentType) {
+      setValue(`${argumentName}.subtype`, null);
+    }
+    previousTypeRef.current = argumentType;
   }, [argumentType, argumentName, setValue]);
-  const argumentTypeItems: { value: string; label: string }[] = [
+  const argumentTypeItems: {
+    value: string;
+    label: string;
+  }[] = [
     // Always available
-    { value: 'text', label: t('Text') },
-    { value: 'document', label: t('Document') },
-    ...canSelectTargetAsset ? [{ value: 'targeted-asset', label: t('Targeted assets') }] : [],
+    {
+      value: 'text',
+      label: t('Text'),
+    },
+    {
+      value: 'document',
+      label: t('Document'),
+    },
+    ...canSelectTargetAsset
+      ? [{
+          value: 'targeted-asset',
+          label: t('Targeted assets'),
+        }]
+      : [],
     // Gated behind INJECT_CHAINING feature flag (mirror of ContractOutputType processor types)
     ...(isChainingEnabled
       ? [
-          { value: 'number', label: t('Number') },
-          { value: 'port', label: t('Port') },
-          { value: 'portscan', label: t('Port scan') },
-          { value: 'ipv4', label: t('IPv4') },
-          { value: 'ipv6', label: t('IPv6') },
-          { value: 'credentials', label: t('Credentials') },
-          { value: 'cve', label: t('CVE') },
+          {
+            value: 'number',
+            label: t('Number'),
+          },
+          {
+            value: 'port',
+            label: t('Port'),
+          },
+          {
+            value: 'portscan',
+            label: t('Port scan'),
+          },
+          {
+            value: 'ipv4',
+            label: t('IPv4'),
+          },
+          {
+            value: 'ipv6',
+            label: t('IPv6'),
+          },
+          {
+            value: 'credentials',
+            label: t('Credentials'),
+          },
+          {
+            value: 'cve',
+            label: t('CVE'),
+          },
         ]
       : []),
   ];
   const targetPropertyItems = [
-    { value: 'hostname', label: t('Hostname') },
-    { value: 'local_ip', label: t('Local IP (first)') },
-    { value: 'seen_ip', label: t('Seen IP') },
+    {
+      value: 'hostname',
+      label: t('Hostname'),
+    },
+    {
+      value: 'local_ip',
+      label: t('Local IP (first)'),
+    },
+    {
+      value: 'seen_ip',
+      label: t('Seen IP'),
+    },
   ];
   const isStructured = STRUCTURED_TYPES.has(argumentType);
   const subtypeItems = isStructured ? (SUBTYPE_OPTIONS[argumentType] ?? []) : [];
