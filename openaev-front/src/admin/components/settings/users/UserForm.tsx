@@ -3,12 +3,11 @@ import { z } from 'zod';
 
 import { type UserInputForm } from '../../../../actions/users/users-helper';
 import Button from '../../../../components/common/button/Button';
-import OldSwitchField from '../../../../components/fields/OldSwitchField';
 import OldTextField from '../../../../components/fields/OldTextField';
 import { useFormatter } from '../../../../components/i18n';
 import OrganizationField from '../../../../components/OrganizationField';
 import TagField from '../../../../components/TagField';
-import { schemaValidator } from '../../../../utils/Zod';
+import { PHONE_REGEX, schemaValidator } from '../../../../utils/Zod';
 
 interface UserFormProps {
   onSubmit: (data: UserInputForm) => void;
@@ -24,8 +23,6 @@ const UserForm = ({ onSubmit, initialValues = {}, editing, handleClose }: UserFo
     ? ['user_email']
     : ['user_email', 'user_plain_password'];
 
-  const phoneRegex = /^\+\d+$/;
-
   const userFormSchemaValidation = z.object({
     user_email: z.email(t('Should be a valid email address'))
       .nonempty(t('This field is required.')),
@@ -39,16 +36,15 @@ const UserForm = ({ onSubmit, initialValues = {}, editing, handleClose }: UserFo
       .nullable()
       .optional()
       .refine(
-        val => !val || phoneRegex.test(val),
+        val => !val || PHONE_REGEX.test(val),
         t('Phone number must start with + and contain only digits'),
       ),
-
     user_phone2: z
       .string()
       .nullable()
       .optional()
       .refine(
-        val => !val || phoneRegex.test(val),
+        val => !val || PHONE_REGEX.test(val),
         t('Phone number must start with + and contain only digits'),
       ),
   });
@@ -74,6 +70,16 @@ const UserForm = ({ onSubmit, initialValues = {}, editing, handleClose }: UserFo
             disabled={initialValues.user_email === 'admin@openaev.io'}
             style={{ marginTop: 10 }}
           />
+          {!editing && (
+            <OldTextField
+              variant="standard"
+              name="user_plain_password"
+              fullWidth
+              type="password"
+              label={t('Password')}
+              style={{ marginTop: 20 }}
+            />
+          )}
           <OldTextField
             name="user_firstname"
             fullWidth
@@ -91,45 +97,6 @@ const UserForm = ({ onSubmit, initialValues = {}, editing, handleClose }: UserFo
             values={values}
             setFieldValue={form.mutators.setValue}
           />
-          {!editing && (
-            <OldTextField
-              variant="standard"
-              name="user_plain_password"
-              fullWidth
-              type="password"
-              label={t('Password')}
-              style={{ marginTop: 20 }}
-            />
-          )}
-          {editing && (
-            <OldTextField
-              variant="standard"
-              name="user_phone"
-              fullWidth
-              label={t('Phone number (mobile)')}
-              style={{ marginTop: 20 }}
-            />
-          )}
-          {editing && (
-            <OldTextField
-              variant="standard"
-              name="user_phone2"
-              fullWidth
-              label={t('Phone number (landline)')}
-              style={{ marginTop: 20 }}
-            />
-          )}
-          {editing && (
-            <OldTextField
-              variant="standard"
-              name="user_pgp_key"
-              fullWidth
-              multiline
-              rows={5}
-              label={t('PGP public key')}
-              style={{ marginTop: 20 }}
-            />
-          )}
           <TagField
             name="user_tags"
             label={t('Tags')}
@@ -137,11 +104,28 @@ const UserForm = ({ onSubmit, initialValues = {}, editing, handleClose }: UserFo
             setFieldValue={form.mutators.setValue}
             style={{ marginTop: 20 }}
           />
-          <OldSwitchField
-            name="user_admin"
-            label={t('Administrator')}
+          <OldTextField
+            variant="standard"
+            name="user_phone"
+            fullWidth
+            label={t('Phone number (mobile)')}
             style={{ marginTop: 20 }}
-            disabled={initialValues.user_email === 'admin@openaev.io'}
+          />
+          <OldTextField
+            variant="standard"
+            name="user_phone2"
+            fullWidth
+            label={t('Phone number (landline)')}
+            style={{ marginTop: 20 }}
+          />
+          <OldTextField
+            variant="standard"
+            name="user_pgp_key"
+            fullWidth
+            multiline
+            rows={5}
+            label={t('PGP public key')}
+            style={{ marginTop: 20 }}
           />
           <div style={{
             float: 'right',
