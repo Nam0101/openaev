@@ -5613,8 +5613,38 @@ export interface PayloadArgument {
   /** @minLength 1 */
   key: string;
   separator?: string | null;
-  /** @minLength 1 */
-  type: string;
+  type:
+    | "text"
+    | "number"
+    | "port"
+    | "portscan"
+    | "ipv4"
+    | "ipv6"
+    | "credentials"
+    | "cve"
+    | "asset"
+    | "document"
+    | "targeted-asset";
+  /**
+   * Optional sub-field key for structured output types.
+   * Only applicable when type has processor fields (portscan, credentials, cve, asset).
+   */
+  subtype?:
+    | "asset_id"
+    | "host"
+    | "port"
+    | "service"
+    | "username"
+    | "password"
+    | "id"
+    | "severity"
+    | "name"
+    | "type"
+    | "description"
+    | "external_reference"
+    | "tags"
+    | "extended_attributes"
+    | null;
 }
 
 export interface PayloadCommandBlock {

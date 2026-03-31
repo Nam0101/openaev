@@ -1,61 +1,95 @@
 import { DeleteOutlined } from '@mui/icons-material';
 import { IconButton } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
+import { useEffect } from 'react';
 import { Controller, useFormContext } from 'react-hook-form';
-
 import DocumentField from '../../../../components/fields/DocumentField';
 import SelectFieldController from '../../../../components/fields/SelectFieldController';
 import SeparatorFieldController from '../../../../components/fields/SeparatorFieldController';
 import TextFieldController from '../../../../components/fields/TextFieldController';
 import { useFormatter } from '../../../../components/i18n';
-
+import type { PayloadArgument } from '../../../../utils/api-types';
+import { isFeatureEnabled } from '../../../../utils/utils';
 interface Props {
   argumentName: string;
   canSelectTargetAsset: boolean;
   onArgumentRemoveClick: () => void;
 }
-
+/** Argument types that have processor sub-fields and therefore support a subtype selection. */
+const STRUCTURED_TYPES = new Set<PayloadArgument['type']>(['portscan', 'credentials', 'cve', 'asset']);
+/** Sub-field options keyed by ArgumentType label. */
+const SUBTYPE_OPTIONS: Partial<Record<PayloadArgument['type'], { value: string; label: string }[]>> = {
+  portscan: [
+    { value: 'asset_id', label: 'Asset ID' },
+    { value: 'host', label: 'Host' },
+    { value: 'port', label: 'Port' },
+    { value: 'service', label: 'Service' },
+  ],
+  credentials: [
+    { value: 'username', label: 'Username' },
+    { value: 'password', label: 'Password' },
+  ],
+  cve: [
+    { value: 'asset_id', label: 'Asset ID' },
+    { value: 'id', label: 'ID' },
+    { value: 'host', label: 'Host' },
+    { value: 'severity', label: 'Severity' },
+  ],
+  asset: [
+    { value: 'name', label: 'Name' },
+    { value: 'type', label: 'Type' },
+    { value: 'description', label: 'Description' },
+    { value: 'external_reference', label: 'External reference' },
+    { value: 'tags', label: 'Tags' },
+    { value: 'extended_attributes', label: 'Extended attributes' },
+  ],
+};
 const PayloadArgumentsField = ({ argumentName, canSelectTargetAsset, onArgumentRemoveClick }: Props) => {
   const { t } = useFormatter();
   const theme = useTheme();
-  const { watch, control } = useFormContext();
-  const argumentType = watch(`${argumentName}.type`);
-
-  const argumentTypeItems = [{
-    value: 'text',
-    label: t('Text'),
-  },
-  {
-    value: 'document',
-    label: t('Document'),
-  },
-  ...canSelectTargetAsset
-    ? [{
-        value: 'targeted-asset',
-        label: t('Targeted assets'),
-      }]
-    : [],
+  const { watch, control, setValue } = useFormContext();
+  const argumentType: PayloadArgument['type'] = watch(`${argumentName}.type`);
+  /** Types that require the INJECT_CHAINING feature flag to be selectable. */
+  const isChainingEnabled = isFeatureEnabled('INJECT_CHAINING');
+  /** Clear the subtype whenever the user switches to a different argument type. */
+  useEffect(() => {
+    setValue(`${argumentName}.subtype`, null);
+  }, [argumentType, argumentName, setValue]);
+  const argumentTypeItems: { value: string; label: string }[] = [
+    // Always available
+    { value: 'text', label: t('Text') },
+    { value: 'document', label: t('Document') },
+    ...canSelectTargetAsset ? [{ value: 'targeted-asset', label: t('Targeted assets') }] : [],
+    // Gated behind INJECT_CHAINING feature flag (mirror of ContractOutputType processor types)
+    ...(isChainingEnabled
+      ? [
+          { value: 'number', label: t('Number') },
+          { value: 'port', label: t('Port') },
+          { value: 'portscan', label: t('Port scan') },
+          { value: 'ipv4', label: t('IPv4') },
+          { value: 'ipv6', label: t('IPv6') },
+          { value: 'credentials', label: t('Credentials') },
+          { value: 'cve', label: t('CVE') },
+        ]
+      : []),
   ];
   const targetPropertyItems = [
-    {
-      value: 'hostname',
-      label: t('Hostname'),
-    },
-    {
-      value: 'local_ip',
-      label: t('Local IP (first)'),
-    },
-    {
-      value: 'seen_ip',
-      label: t('Seen IP'),
-    },
+    { value: 'hostname', label: t('Hostname') },
+    { value: 'local_ip', label: t('Local IP (first)') },
+    { value: 'seen_ip', label: t('Seen IP') },
   ];
-
+  const isStructured = STRUCTURED_TYPES.has(argumentType);
+  const subtypeItems = isStructured ? (SUBTYPE_OPTIONS[argumentType] ?? []) : [];
+  const columnCount = (() => {
+    if (argumentType === 'targeted-asset') return 4;
+    if (isStructured) return 4;
+    return 3;
+  })();
   return (
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: argumentType == 'targeted-asset' ? 'repeat(4, 1fr) auto' : 'repeat(3, 1fr) auto',
+        gridTemplateColumns: `repeat(${columnCount}, 1fr) auto`,
         gap: theme.spacing(1),
       }}
     >
@@ -66,14 +100,24 @@ const PayloadArgumentsField = ({ argumentName, canSelectTargetAsset, onArgumentR
         required
       />
       <TextFieldController name={`${argumentName}.key` as const} label={t('Key')} required />
-      {argumentType == 'text' && (
+      {/* Sub-type selector — only for structured output types when chaining is enabled */}
+      {isChainingEnabled && isStructured && (
+        <SelectFieldController
+          name={`${argumentName}.subtype` as const}
+          label={t('Sub-type')}
+          items={subtypeItems}
+        />
+      )}
+      {(argumentType === 'text' || argumentType === 'number' || argumentType === 'port'
+        || argumentType === 'portscan' || argumentType === 'ipv4' || argumentType === 'ipv6'
+        || argumentType === 'credentials' || argumentType === 'cve') && (
         <TextFieldController
           name={`${argumentName}.default_value` as const}
           label={t('Default Value')}
           required
         />
       )}
-      {argumentType == 'document' && (
+      {argumentType === 'document' && (
         <Controller
           control={control}
           name={`${argumentName}.default_value` as const}
@@ -88,7 +132,7 @@ const PayloadArgumentsField = ({ argumentName, canSelectTargetAsset, onArgumentR
           )}
         />
       )}
-      {argumentType == 'targeted-asset' && (
+      {argumentType === 'targeted-asset' && (
         <>
           <SelectFieldController
             name={`${argumentName}.default_value` as const}
@@ -115,5 +159,4 @@ const PayloadArgumentsField = ({ argumentName, canSelectTargetAsset, onArgumentR
     </div>
   );
 };
-
 export default PayloadArgumentsField;

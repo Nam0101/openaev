@@ -261,7 +261,7 @@ class PayloadApiTest extends IntegrationTest {
 
       PayloadArgument targetedAssetArgument = new PayloadArgument();
       targetedAssetArgument.setKey("URL");
-      targetedAssetArgument.setType("targeted-asset");
+      targetedAssetArgument.setType(ArgumentType.TargetedAsset);
       targetedAssetArgument.setDefaultValue("hostname");
       targetedAssetArgument.setSeparator("-u");
       input.setArguments(List.of(targetedAssetArgument));
