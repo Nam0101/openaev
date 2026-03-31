@@ -1,8 +1,6 @@
 package io.openaev.database.model;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonValue;
 import java.util.Arrays;
 
 /**
@@ -52,30 +50,21 @@ public enum ArgumentType {
   @JsonProperty("targeted-asset")
   TargetedAsset("targeted-asset");
 
-  private final String label;
+  public final String label;
 
   ArgumentType(String label) {
     this.label = label;
   }
 
   /**
-   * Returns the JSON/wire value of this type (e.g. {@code "text"}, {@code "targeted-asset"}).
+   * Looks up an {@link ArgumentType} by its JSON label. Used for manual JSON parsing (e.g. {@code
+   * PayloadUtils.buildPayload}). Jackson uses the {@code @JsonProperty} annotations on the
+   * constants directly.
    *
-   * @return serialised label
-   */
-  @JsonValue
-  public String getLabel() {
-    return label;
-  }
-
-  /**
-   * Deserialises an {@link ArgumentType} from its JSON label.
-   *
-   * @param label the raw string value from JSON
+   * @param label the raw string value
    * @return the matching enum constant
    * @throws IllegalArgumentException when no constant matches
    */
-  @JsonCreator
   public static ArgumentType fromLabel(String label) {
     return Arrays.stream(values())
         .filter(v -> v.label.equals(label))

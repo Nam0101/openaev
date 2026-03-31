@@ -5614,21 +5614,7 @@ export interface PayloadArgument {
   key: string;
   separator?: string | null;
   /** Optional sub-field key for structured output types */
-  subtype?:
-    | "asset_id"
-    | "host"
-    | "port"
-    | "service"
-    | "username"
-    | "password"
-    | "id"
-    | "severity"
-    | "name"
-    | "type"
-    | "description"
-    | "external_reference"
-    | "tags"
-    | "extended_attributes";
+  subtype?: "host" | "port" | "service" | "username" | "password" | "severity";
   type:
     | "text"
     | "number"

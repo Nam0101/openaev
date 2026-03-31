@@ -49,10 +49,6 @@ const SUBTYPE_OPTIONS: Partial<Record<PayloadArgument['type'], {
   ],
   cve: [
     {
-      value: 'id',
-      label: 'ID',
-    },
-    {
       value: 'host',
       label: 'Host',
     },
