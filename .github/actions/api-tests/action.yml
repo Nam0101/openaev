@@ -106,19 +106,45 @@ runs:
           exit 1
         fi
 
+        echo "🔍 Post-download: listing ~/.m2/repository/io/openaev/ (top 3 levels):"
+        find ~/.m2/repository/io/openaev/ -maxdepth 3 -type d 2>/dev/null | head -20 || echo "  directory does not exist"
+        echo "---"
+        echo "🔍 Post-download: listing openaev-api/target/ (top 3 levels):"
+        find openaev-api/target/ -maxdepth 3 -type d 2>/dev/null | head -20 || echo "  directory does not exist"
+        echo "---"
+
     - name: Verify downloaded artifacts
       shell: bash
       run: |
+        echo "🔍 Listing openaev-api/target/ (top 3 levels):"
+        find openaev-api/target/ -maxdepth 3 -type d 2>/dev/null || echo "  openaev-api/target/ does not exist"
+        echo "---"
+
+        # ── Fix double-nesting from gh run download ──
+        # upload-artifact@v6 may store paths with the full prefix inside
+        # the zip, so gh run download -D openaev-api/target can produce
+        # openaev-api/target/openaev-api/target/classes/ instead of
+        # openaev-api/target/classes/.  Detect and flatten.
+        if [ -d "openaev-api/target/openaev-api/target" ]; then
+          echo "⚠️ Detected double-nested artifact path — flattening..."
+          cp -rn openaev-api/target/openaev-api/target/* openaev-api/target/ 2>/dev/null || true
+          rm -rf openaev-api/target/openaev-api
+          echo "✅ Flattened double-nested paths"
+        fi
+
         MVN_JARS=$(find ~/.m2/repository/io/openaev/ -name '*.jar' 2>/dev/null | head -5)
         if [ -z "$MVN_JARS" ]; then
           echo "❌ No Maven JARs found in ~/.m2/repository/io/openaev/"
-          ls -laR ~/.m2/repository/io/openaev/ 2>/dev/null || echo "  directory does not exist"
+          echo "🔍 Listing ~/.m2/repository/io/openaev/ (top 4 levels):"
+          find ~/.m2/repository/io/openaev/ -maxdepth 4 2>/dev/null | head -30 || echo "  directory does not exist"
           exit 1
         fi
         echo "✅ Maven artifacts found ($(find ~/.m2/repository/io/openaev/ -name '*.jar' | wc -l) JARs)"
 
         if [ ! -d "openaev-api/target/classes" ]; then
           echo "❌ openaev-api/target/classes/ directory does not exist"
+          echo "🔍 Actual contents of openaev-api/target/:"
+          ls -la openaev-api/target/ 2>/dev/null || echo "  target/ directory does not exist"
           exit 1
         fi
         echo "✅ Compiled classes present"
@@ -126,7 +152,10 @@ runs:
         TEST_CLASSES=$(find openaev-api/target/test-classes -name '*Test.class' 2>/dev/null | head -5)
         if [ -z "$TEST_CLASSES" ]; then
           echo "❌ No test classes found in openaev-api/target/test-classes/"
+          echo "🔍 Actual contents of openaev-api/target/:"
           ls -la openaev-api/target/ 2>/dev/null || echo "  target/ directory does not exist"
+          echo "🔍 Contents of test-classes/ (if exists):"
+          find openaev-api/target/test-classes -maxdepth 3 2>/dev/null | head -20 || echo "  test-classes/ does not exist"
           exit 1
         fi
         echo "✅ Test classes found ($(find openaev-api/target/test-classes -name '*Test.class' | wc -l) *Test.class files)"
