@@ -11,7 +11,6 @@ import java.util.Arrays;
  * ArgumentType#IPv6}) have no fields in their processors and therefore never need a sub-type.
  */
 public enum ArgumentSubType {
-
   @JsonProperty("host")
   Host("host"),
 

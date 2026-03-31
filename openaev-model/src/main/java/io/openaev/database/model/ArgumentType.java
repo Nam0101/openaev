@@ -6,16 +6,12 @@ import java.util.Arrays;
 /**
  * Enumeration of supported argument types for {@link PayloadArgument}.
  *
- * <p>This enum mirrors {@link ContractOutputType} and additionally exposes the two field types used
- * exclusively as payload arguments: {@link #Document} and {@link #TargetedAsset}.
- *
  * <p>Types that expose sub-fields (e.g. {@link #PortsScan}, {@link #Credentials}) can pair with an
  * {@link ArgumentSubType} to address a specific field. Types whose processor has an empty field
  * list ({@link #Text}, {@link #Number}, {@link #Port}, {@link #IPv4}, {@link #IPv6}) do not require
  * a sub-type.
  */
 public enum ArgumentType {
-
   @JsonProperty("text")
   Text("text"),
 
