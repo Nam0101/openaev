@@ -14,6 +14,12 @@ name: "[Release] Dry Run"
 # tested here too.
 
 on:
+  # TODO: Remove push trigger before merging — only needed because
+  # workflow_dispatch requires the file to exist on the default branch.
+  push:
+    branches: [core-ci]
+    paths:
+      - '.github/workflows/release-dry-run.yml'
   workflow_dispatch:
     inputs:
       simulated_version:
@@ -42,7 +48,7 @@ permissions:
   actions: read            # poll for artifacts in api-tests/e2e-tests
 
 env:
-  SIMULATED_VERSION: ${{ inputs.simulated_version }}
+  SIMULATED_VERSION: ${{ inputs.simulated_version || '0.0.0-dryrun' }}
   GHCR_IMAGE: ghcr.io/${{ github.repository }}/dry-run
 
 jobs:
@@ -245,7 +251,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download agent & implant binaries
-        if: ${{ inputs.skip_binary_download != true }}
+        if: ${{ inputs.skip_binary_download == false }}
         run: |
           chmod +x scripts/download-binaries.sh
           if ! bash scripts/download-binaries.sh "$SIMULATED_VERSION" "$SIMULATED_VERSION"; then
@@ -253,7 +259,7 @@ jobs:
           fi
 
       - name: Create placeholder binaries (when download skipped)
-        if: ${{ inputs.skip_binary_download == true }}
+        if: ${{ inputs.skip_binary_download != false }}
         run: |
           echo "ℹ️ Binary download skipped — creating placeholder files"
           RESOURCES="openaev-api/src/main/resources"
@@ -432,7 +438,7 @@ jobs:
       - name: Compute Docker tags (simulating release)
         id: tags
         run: |
-          VERSION="${{ inputs.simulated_version }}"
+          VERSION="${SIMULATED_VERSION}"
           IMAGE="${GHCR_IMAGE}"
 
           # Always tag with the simulated version
