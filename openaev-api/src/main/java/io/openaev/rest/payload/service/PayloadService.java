@@ -196,8 +196,6 @@ public class PayloadService {
                       targetedAssetFields(payloadArgument.getKey(), payloadArgument);
                   targetedAssetsFields.forEach(builder::mandatory);
                 } else {
-                  // Text, Number, Port, PortsScan, IPv4, IPv6, Credentials, CVE, Document
-                  // — all stored and retrieved as plain text in the inject content
                   builder.mandatory(
                       textField(
                           payloadArgument.getKey(),
