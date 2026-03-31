@@ -408,6 +408,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Normalize image name to lowercase
+        run: echo "GHCR_IMAGE=$(echo '${{ env.GHCR_IMAGE }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
       - name: Download backend JAR artifact
         uses: actions/download-artifact@v8
         with:
@@ -663,6 +666,7 @@ jobs:
           DATE_STAMP: ${{ needs.jfrog-dry-run.outputs.date_stamp }}
         run: |
           set -euo pipefail
+          GHCR_IMAGE=$(echo "$GHCR_IMAGE" | tr '[:upper:]' '[:lower:]')
           WARNINGS=0
           ERRORS=0
 
