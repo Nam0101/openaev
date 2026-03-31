@@ -1,6 +1,11 @@
 import { TENANT_URI } from '../actions/platform/tenants/tenant-action';
 import { APP_BASE_PATH } from './Environment';
-import { TENANT_STORAGE_KEY } from './hooks/useTenant';
+
+/**
+ * Local-storage key used to persist the selected tenant.
+ * Shared between tenant-url-helper and useTenant hook.
+ */
+export const TENANT_STORAGE_KEY = 'current-tenant-storage';
 
 /**
  * Default tenant UUID used as fallback when no tenant has been selected yet.

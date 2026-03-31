@@ -6,9 +6,7 @@ import { fetchUserTenants } from '../../actions/user/user-tenant-actions';
 import { TENANT_SWITCH_SUCCESS } from '../../constants/ActionTypes';
 import { type TenantOutput, type User } from '../api-types';
 import { useAppDispatch } from '../hooks';
-import { buildTenantUrl } from '../tenant-url-helper';
-
-export const TENANT_STORAGE_KEY = 'current-tenant-storage';
+import { buildTenantUrl, TENANT_STORAGE_KEY } from '../tenant-url-helper';
 
 /**
  * Internal hook that encapsulates the current-tenant state and
