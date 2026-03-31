@@ -16,8 +16,6 @@ import java.util.Arrays;
  */
 public enum ArgumentType {
 
-  // -- Mirror of ContractOutputType --
-
   @JsonProperty("text")
   Text("text"),
 
