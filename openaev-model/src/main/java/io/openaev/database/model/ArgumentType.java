@@ -3,7 +3,6 @@ package io.openaev.database.model;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonValue;
-import io.swagger.v3.oas.annotations.Hidden;
 import java.util.Arrays;
 
 /**
@@ -44,10 +43,6 @@ public enum ArgumentType {
 
   @JsonProperty("cve")
   CVE("cve"),
-
-  @Hidden
-  @JsonProperty("asset")
-  Asset("asset"),
 
   // -- Argument-only types --
 
