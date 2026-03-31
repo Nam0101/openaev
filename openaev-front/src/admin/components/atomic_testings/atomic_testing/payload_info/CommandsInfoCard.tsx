@@ -92,8 +92,9 @@ const CommandsInfoCard = ({ payloadOutput }: Props) => {
         <TableContainer className={classes.tableContainer} component={Paper}>
           <Table sx={{ minWidth: 650 }} aria-label="Table to show payload's arguments">
             <TableHead sx={{ fontWeight: 'bold' }}>
-              <TableCell width="30%">{t('Type')}</TableCell>
-              <TableCell width="30%">{t('Key')}</TableCell>
+              <TableCell width="25%">{t('Type')}</TableCell>
+              <TableCell width="20%">{t('Sub-type')}</TableCell>
+              <TableCell width="25%">{t('Key')}</TableCell>
               <TableCell width="30%">{t('Default value')}</TableCell>
             </TableHead>
             <TableBody>
@@ -101,6 +102,7 @@ const CommandsInfoCard = ({ payloadOutput }: Props) => {
                 <>
                   <TableRow key={argument.key}>
                     <TableCell>{argument.type}</TableCell>
+                    <TableCell>{argument.subtype ?? '-'}</TableCell>
                     <TableCell>{argument.key}</TableCell>
                     <TableCell>
                       <pre><ItemCopy content={argument.default_value} /></pre>
