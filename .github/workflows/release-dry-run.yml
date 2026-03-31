@@ -595,14 +595,15 @@ jobs:
             ARCHIVE_SIZE_MB=$(awk "BEGIN {printf \"%.1f\", $ARCHIVE_SIZE / 1048576}")
             echo "  ${ARCHIVE}: ${ARCHIVE_SIZE_MB} MB"
 
-            # Verify archive contents
+            # List archive contents once (avoids SIGPIPE with pipefail)
+            CONTENTS=$(tar -tzf "$ARCHIVE")
             echo "  Contents:"
-            tar -tzf "$ARCHIVE" | sed 's/^/    /'
+            echo "$CONTENTS" | sed 's/^/    /'
 
             # Verify expected files inside archive
             EXPECTED_FILES=("openaev/openaev-api.jar" "openaev/application.properties")
             for expected in "${EXPECTED_FILES[@]}"; do
-              if ! tar -tzf "$ARCHIVE" | grep -q "$expected"; then
+              if ! echo "$CONTENTS" | grep -q "$expected"; then
                 echo "  ❌ Missing expected file in archive: $expected"
                 exit 1
               fi
