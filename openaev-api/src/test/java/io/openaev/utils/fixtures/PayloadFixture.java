@@ -178,4 +178,15 @@ public class PayloadFixture {
     payloadArgument.setSeparator(separator);
     return payloadArgument;
   }
+
+  public static PayloadArgument createPayloadArgument(
+      String key,
+      ArgumentType type,
+      String defaultValue,
+      String separator,
+      ArgumentSubType subtype) {
+    PayloadArgument payloadArgument = createPayloadArgument(key, type, defaultValue, separator);
+    payloadArgument.setSubtype(subtype);
+    return payloadArgument;
+  }
 }
